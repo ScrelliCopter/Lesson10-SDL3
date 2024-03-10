@@ -8,7 +8,7 @@ add_executable(Lesson10 Lesson10.cpp)
 set_target_properties(Lesson10 PROPERTIES
 	CXX_STANDARD 98
 	WIN32_EXECUTABLE ON)
-target_link_libraries(Lesson10 SDL3::SDL3 OpenGL::GL OpenGL::GLU)
+target_link_libraries(Lesson10 SDL3::SDL3 OpenGL::GL)
 target_compile_options(Lesson10 PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -pedantic>)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")

@@ -9,14 +9,10 @@
 #include <math.h>					// Math Library Header File
 #include <stdio.h>					// Header File For Standard Input/Output
 #include <stdlib.h>
-#include <SDL.h>
-#include <SDL_main.h>
-#include <SDL_opengl.h>				// Header File For The OpenGL32 Library
-#ifdef __APPLE__
-#include <OpenGL/glu.h>				// Header File For The GLu32 Library
-#else
-#include <GL/glu.h>					// Header File For The GLu32 Library
-#endif
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#define GL_GLEXT_PROTOTYPES
+#include <SDL3/SDL_opengl.h>		// Header File For The OpenGL32 Library
 
 SDL_Window*   hWnd=NULL;			// Holds Our Window Handle
 SDL_GLContext hRC=NULL;				// Permanent Rendering Context
@@ -171,11 +167,29 @@ int LoadGLTextures()                                    // Load Bitmaps And Conv
 				glBindTexture(GL_TEXTURE_2D, texture[2]);
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
-				gluBuild2DMipmaps(GL_TEXTURE_2D, 3, TextureImage->w, TextureImage->h, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+				glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+				glGenerateMipmap(GL_TEXTURE_2D);
         }
         SDL_DestroySurface(TextureImage);				// Free The Image Structure
 
         return Status;									// Return The Status
+}
+
+static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar)
+{
+	double h = 1.0 / tan(fovy * (M_PI / 180.0) * 0.5);
+	double w = h / aspect;
+	double invcliprng = 1.0 / (zFar - zNear);
+	double z = -(zFar + zNear) * invcliprng;
+	double z2 = -(2.0 * zFar * zNear) * invcliprng;
+	double mtx[16] =
+	{
+		w,   0.0, 0.0, 0.0,
+		0.0, h,   0.0, 0.0,
+		0.0, 0.0, z,  -1.0,
+		0.0, 0.0, z2,  0.0
+	};
+	glLoadMatrixd(mtx);
 }
 
 GLvoid ReSizeGLScene(GLsizei width, GLsizei height)		// Resize And Initialize The GL Window
