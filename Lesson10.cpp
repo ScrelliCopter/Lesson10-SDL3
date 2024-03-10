@@ -13,6 +13,9 @@
 #include <SDL3/SDL_main.h>
 #define GL_GLEXT_PROTOTYPES
 #include <SDL3/SDL_opengl.h>		// Header File For The OpenGL32 Library
+#ifdef _WIN32
+# include <gl/GLU.h>
+#endif
 
 SDL_Window*   hWnd=NULL;			// Holds Our Window Handle
 SDL_GLContext hRC=NULL;				// Permanent Rendering Context
@@ -167,8 +170,12 @@ int LoadGLTextures()                                    // Load Bitmaps And Conv
 				glBindTexture(GL_TEXTURE_2D, texture[2]);
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
+#ifndef _WIN32
 				glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
 				glGenerateMipmap(GL_TEXTURE_2D);
+#else
+				gluBuild2DMipmaps(GL_TEXTURE_2D, 3, TextureImage->w, TextureImage->h, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+#endif
         }
         SDL_DestroySurface(TextureImage);				// Free The Image Structure
 
@@ -177,7 +184,7 @@ int LoadGLTextures()                                    // Load Bitmaps And Conv
 
 static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar)
 {
-	double h = 1.0 / tan(fovy * (M_PI / 180.0) * 0.5);
+	double h = 1.0 / tan(fovy * (SDL_PI_D / 180.0) * 0.5);
 	double w = h / aspect;
 	double invcliprng = 1.0 / (zFar - zNear);
 	double z = -(zFar + zNear) * invcliprng;
