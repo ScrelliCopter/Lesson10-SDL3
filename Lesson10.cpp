@@ -8,6 +8,7 @@
 
 #include <math.h>					// Math Library Header File
 #include <stdio.h>					// Header File For Standard Input/Output
+#include <stdlib.h>
 #include <SDL.h>
 #include <SDL_main.h>
 #include <SDL_opengl.h>				// Header File For The OpenGL32 Library
