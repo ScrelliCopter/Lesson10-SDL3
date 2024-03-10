@@ -9,6 +9,7 @@
 #include <math.h>					// Math Library Header File
 #include <stdio.h>					// Header File For Standard Input/Output
 #include <SDL.h>
+#include <SDL_main.h>
 #include <SDL_opengl.h>				// Header File For The OpenGL32 Library
 #ifdef __APPLE__
 #include <OpenGL/glu.h>				// Header File For The GLu32 Library
@@ -171,7 +172,7 @@ int LoadGLTextures()                                    // Load Bitmaps And Conv
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
 				gluBuild2DMipmaps(GL_TEXTURE_2D, 3, TextureImage->w, TextureImage->h, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
         }
-        SDL_FreeSurface(TextureImage);					// Free The Image Structure
+        SDL_DestroySurface(TextureImage);				// Free The Image Structure
 
         return Status;									// Return The Status
 }
@@ -272,7 +273,7 @@ GLvoid KillGLWindow(GLvoid)								// Properly Kill The Window
 	if (fullscreen)										// Are We In Fullscreen Mode?
 	{
 		SDL_SetWindowFullscreen(hWnd, 0);               // If So Switch Back To The Desktop
-		SDL_ShowCursor(SDL_ENABLE);						// Show Mouse Pointer
+		SDL_ShowCursor();								// Show Mouse Pointer
 	}
 
 	if (hRC)											// Do We Have A Rendering Context?
@@ -311,7 +312,6 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 
 	// Create The Window
 	if (!(hWnd = SDL_CreateWindow(title,
-								SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,	// Window Position
 								WindowRect.w,										// Window Width
 								WindowRect.h,										// Window Height
 								SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE)))
@@ -323,7 +323,7 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 
 	if (fullscreen)												// Attempt Fullscreen Mode?
 	{
-		if (SDL_SetWindowFullscreen(hWnd, SDL_WINDOW_FULLSCREEN_DESKTOP) < 0)  // Try To Set Selected Mode And Get Results.
+		if (SDL_SetWindowFullscreen(hWnd, SDL_TRUE) < 0)		// Try To Set Selected Mode And Get Results.
 		{
 			// If The Mode Fails, Offer Two Options.  Quit Or Use Windowed Mode.
 			const SDL_MessageBoxData msgbox =
@@ -400,29 +400,22 @@ void WndProc(SDL_Event* uMsg)
 {
 	switch (uMsg->type)								// Check For Windows Messages
 	{
-		case SDL_KEYDOWN:							// Is A Key Being Held Down?
+		case SDL_EVENT_KEY_DOWN:					// Is A Key Being Held Down?
 		{
 			keys[uMsg->key.keysym.scancode] = true;					// If So, Mark It As TRUE
 			break; 								// Jump Back
 		}
 
-		case SDL_KEYUP:								// Has A Key Been Released?
+		case SDL_EVENT_KEY_UP:						// Has A Key Been Released?
 		{
 			keys[uMsg->key.keysym.scancode] = false;					// If So, Mark It As FALSE
 			break; 								// Jump Back
 		}
 
-		case SDL_WINDOWEVENT:
+		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:	// Resize The OpenGL Window
 		{
-			switch (uMsg->window.event)
-			{
-				case SDL_WINDOWEVENT_SIZE_CHANGED:		// Resize The OpenGL Window
-				{
-					ReSizeGLScene(uMsg->window.data1,uMsg->window.data2);  // LoWord=Width, HiWord=Height
-					break; 								// Jump Back
-				}
-			}
-			break;
+			ReSizeGLScene(uMsg->window.data1,uMsg->window.data2);  // LoWord=Width, HiWord=Height
+			break; 									// Jump Back
 		}
 	}
 }
@@ -462,7 +455,7 @@ int main(int argc, char* argv[])
 	{
 		if (SDL_PollEvent(&msg) > 0)				// Is There A Message Waiting?
 		{
-			if (msg.type==SDL_QUIT)					// Have We Received A Quit Message?
+			if (msg.type==SDL_EVENT_QUIT)			// Have We Received A Quit Message?
 			{
 				done=true;							// If So done=TRUE
 			}
