@@ -315,7 +315,7 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 	if (!(hWnd = SDL_CreateWindow(title,
 								WindowRect.w,										// Window Width
 								WindowRect.h,										// Window Height
-								SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE)))
+								SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
 	{
 		KillGLWindow();								// Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Window Creation Error.", NULL);
