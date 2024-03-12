@@ -421,34 +421,42 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 	return true;                                        // Success
 }
 
-void WndProc(SDL_Event *uMsg)
+
+bool done = false;  // Bool Variable To Exit Loop
+
+void WndProc(SDL_Event *event)
 {
-	switch (uMsg->type)                                             // Check For Windows Messages
+	switch (event->type)                                              // Check For Windows Messages
 	{
-		case SDL_EVENT_KEY_DOWN:                                    // Is A Key Being Held Down?
+	case SDL_EVENT_QUIT:                                              // Have We Received A Quit Message?
 		{
-			keys[uMsg->key.keysym.scancode] = true;                 // If So, Mark It As TRUE
-			break;                                                  // Jump Back
+			done = true;                                              // If So done=TRUE
+			break;
+		}
+				
+	case SDL_EVENT_KEY_DOWN:                                          // Is A Key Being Held Down?
+		{
+			keys[event->key.keysym.scancode] = true;                  // If So, Mark It As TRUE
+			break;                                                    // Jump Back
 		}
 
-		case SDL_EVENT_KEY_UP:                                      // Has A Key Been Released?
+	case SDL_EVENT_KEY_UP:                                            // Has A Key Been Released?
 		{
-			keys[uMsg->key.keysym.scancode] = false;                // If So, Mark It As FALSE
-			break;                                                  // Jump Back
+			keys[event->key.keysym.scancode] = false;                 // If So, Mark It As FALSE
+			break;                                                    // Jump Back
 		}
 
-		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                   // Resize The OpenGL Window
+	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                         // Resize The OpenGL Window
 		{
-			ReSizeGLScene(uMsg->window.data1, uMsg->window.data2);  // LoWord=Width, HiWord=Height
-			break;                                                  // Jump Back
+			ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Width, data2=Height
+			break;                                                    // Jump Back
 		}
+	default: break;
 	}
 }
 
 int main(int argc, char *argv[])
 {
-	SDL_Event msg;                                  // Windows Message Structure
-	bool done = false;                              // Bool Variable To Exit Loop
 
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -478,136 +486,127 @@ int main(int argc, char *argv[])
 
 	while (!done)                                   // Loop That Runs While done=FALSE
 	{
-		if (SDL_PollEvent(&msg) > 0)                // Is There A Message Waiting?
+		SDL_Event event;                            // SDL Event Structure
+		while (SDL_PollEvent(&event) > 0)           // Is There A Message Waiting?
 		{
-			if (msg.type == SDL_EVENT_QUIT)         // Have We Received A Quit Message?
+			WndProc(&event);                        // Deal with events
+		}
+
+		// Draw The Scene.  Watch For ESC Key And Quit Messages From DrawGLScene()
+		if ((active && !DrawGLScene()) || keys[SDL_SCANCODE_ESCAPE])  // Active?  Was There A Quit Received?
+		{
+			done = true;                            // ESC or DrawGLScene Signalled A Quit
+			break;
+		}
+
+		SDL_GL_SwapWindow(win);                     // Swap Buffers (Double Buffering)
+		if (keys[SDL_SCANCODE_B] && !bpressed)
+		{
+			bpressed = true;
+			blend = !blend;
+			if (!blend)
 			{
-				done = true;                        // If So done=TRUE
+				glDisable(GL_BLEND);
+				glEnable(GL_DEPTH_TEST);
 			}
-			else                                    // If Not, Deal With Window Messages
+			else
 			{
-				WndProc(&msg);
+				glEnable(GL_BLEND);
+				glDisable(GL_DEPTH_TEST);
 			}
 		}
-		else                                        // If There Are No Messages
+		if (!keys[SDL_SCANCODE_B])
 		{
-			// Draw The Scene.  Watch For ESC Key And Quit Messages From DrawGLScene()
-			if ((active && !DrawGLScene()) || keys[SDL_SCANCODE_ESCAPE])  // Active?  Was There A Quit Received?
+			bpressed = false;
+		}
+
+		if (keys[SDL_SCANCODE_F] && !fpressed)
+		{
+			fpressed = true;
+			filter += 1;
+			if (filter > 2)
 			{
-				done = true;                        // ESC or DrawGLScene Signalled A Quit
+				filter = 0;
 			}
-			else                                    // Not Time To Quit, Update Screen
+		}
+		if (!keys[SDL_SCANCODE_F])
+		{
+			fpressed = false;
+		}
+
+		if (keys[SDL_SCANCODE_PAGEUP])
+		{
+			z -= 0.02f;
+		}
+
+		if (keys[SDL_SCANCODE_PAGEDOWN])
+		{
+			z += 0.02f;
+		}
+
+		if (keys[SDL_SCANCODE_UP])
+		{
+
+			xpos -= (float)sin(heading * piover180) * 0.05f;
+			zpos -= (float)cos(heading * piover180) * 0.05f;
+			if (walkbiasangle >= 359.0f)
 			{
-				SDL_GL_SwapWindow(win);             // Swap Buffers (Double Buffering)
-				if (keys[SDL_SCANCODE_B] && !bpressed)
-				{
-					bpressed = true;
-					blend = !blend;
-					if (!blend)
-					{
-						glDisable(GL_BLEND);
-						glEnable(GL_DEPTH_TEST);
-					}
-					else
-					{
-						glEnable(GL_BLEND);
-						glDisable(GL_DEPTH_TEST);
-					}
-				}
-				if (!keys[SDL_SCANCODE_B])
-				{
-					bpressed = false;
-				}
+				walkbiasangle = 0.0f;
+			}
+			else
+			{
+				walkbiasangle += 10;
+			}
+			walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
+		}
 
-				if (keys[SDL_SCANCODE_F] && !fpressed)
-				{
-					fpressed = true;
-					filter += 1;
-					if (filter > 2)
-					{
-						filter = 0;
-					}
-				}
-				if (!keys[SDL_SCANCODE_F])
-				{
-					fpressed = false;
-				}
+		if (keys[SDL_SCANCODE_DOWN])
+		{
+			xpos += (float)sin(heading*piover180) * 0.05f;
+			zpos += (float)cos(heading*piover180) * 0.05f;
+			if (walkbiasangle <= 1.0f)
+			{
+				walkbiasangle = 359.0f;
+			}
+			else
+			{
+				walkbiasangle -= 10;
+			}
+			walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
+		}
 
-				if (keys[SDL_SCANCODE_PAGEUP])
-				{
-					z -= 0.02f;
-				}
+		if (keys[SDL_SCANCODE_RIGHT])
+		{
+			heading -= 1.0f;
+			yrot = heading;
+		}
 
-				if (keys[SDL_SCANCODE_PAGEDOWN])
-				{
-					z += 0.02f;
-				}
+		if (keys[SDL_SCANCODE_LEFT])
+		{
+			heading += 1.0f;
+			yrot = heading;
+		}
 
-				if (keys[SDL_SCANCODE_UP])
-				{
+		if (keys[SDL_SCANCODE_PAGEUP])
+		{
+			lookupdown -= 1.0f;
+		}
 
-					xpos -= (float)sin(heading * piover180) * 0.05f;
-					zpos -= (float)cos(heading * piover180) * 0.05f;
-					if (walkbiasangle >= 359.0f)
-					{
-						walkbiasangle = 0.0f;
-					}
-					else
-					{
-						walkbiasangle += 10;
-					}
-					walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
-				}
+		if (keys[SDL_SCANCODE_PAGEDOWN])
+		{
+			lookupdown += 1.0f;
+		}
 
-				if (keys[SDL_SCANCODE_DOWN])
-				{
-					xpos += (float)sin(heading*piover180) * 0.05f;
-					zpos += (float)cos(heading*piover180) * 0.05f;
-					if (walkbiasangle <= 1.0f)
-					{
-						walkbiasangle = 359.0f;
-					}
-					else
-					{
-						walkbiasangle -= 10;
-					}
-					walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
-				}
-
-				if (keys[SDL_SCANCODE_RIGHT])
-				{
-					heading -= 1.0f;
-					yrot = heading;
-				}
-
-				if (keys[SDL_SCANCODE_LEFT])
-				{
-					heading += 1.0f;
-					yrot = heading;
-				}
-
-				if (keys[SDL_SCANCODE_PAGEUP])
-				{
-					lookupdown -= 1.0f;
-				}
-
-				if (keys[SDL_SCANCODE_PAGEDOWN])
-				{
-					lookupdown += 1.0f;
-				}
-
-				if (keys[SDL_SCANCODE_F1])          // Is F1 Being Pressed?
-				{
-					keys[SDL_SCANCODE_F1] = false;  // If So Make Key FALSE
-					FreeResources();
-					KillGLWindow();                 // Kill Our Current Window
-					fullscreen = !fullscreen;       // Toggle Fullscreen / Windowed Mode
-					// Recreate Our OpenGL Window
-					if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, fullscreen))
-					{
-						return 0;                   // Quit If Window Was Not Created
-					}
-				}
+		if (keys[SDL_SCANCODE_F1])          // Is F1 Being Pressed?
+		{
+			keys[SDL_SCANCODE_F1] = false;  // If So Make Key FALSE
+			FreeResources();
+			KillGLWindow();                 // Kill Our Current Window
+			fullscreen = !fullscreen;       // Toggle Fullscreen / Windowed Mode
+			// Recreate Our OpenGL Window
+			if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, fullscreen))
+			{
+				return 0;                   // Quit If Window Was Not Created
 			}
 		}
 	}
