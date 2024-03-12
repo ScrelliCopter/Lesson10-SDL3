@@ -374,7 +374,6 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);        // Must Support Double Buffering
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);          // Select Our Color Depth
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);            // Color Bits Ignored
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 0);
