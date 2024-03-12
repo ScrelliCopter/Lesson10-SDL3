@@ -20,9 +20,6 @@ SDL_GLContext ctx = NULL;      // Permanent Rendering Context
 bool active = true;            // Window Active Flag Set To TRUE By Default
 bool fullscreen = true;        // Fullscreen Flag Set To Fullscreen Mode By Default
 bool blend = false;            // Blending ON/OFF
-bool bpressed = false;         // B Pressed?
-bool fpressed = false;         // F Pressed?
-bool f1pressed = false;        // F1 Pressed
 
 static const SDL_MessageBoxButtonData yesnobttns[2] =
 {
@@ -426,29 +423,59 @@ bool done = false;  // Bool Variable To Exit Loop
 
 void WndProc(SDL_Event *event)
 {
-	switch (event->type)                                              // Check For Windows Messages
+	switch (event->type)
 	{
-	case SDL_EVENT_QUIT:                                              // Have We Received A Quit Message?
+	case SDL_EVENT_QUIT:                                          // Have we received a quit event?
+		done = true;                                              // If so done=TRUE
+		break;
+				
+	case SDL_EVENT_KEY_DOWN:
+		if (event->key.keysym.scancode == SDL_SCANCODE_ESCAPE)    // Quit on Escape
 		{
-			done = true;                                              // If So done=TRUE
+			done = true;
 			break;
 		}
-				
-	case SDL_EVENT_KEY_DOWN:                                          // Is A Key Being Held Down?
+		if (!event->key.repeat)                                   // Was a key just pressed?
 		{
-			break;                                                    // Jump Back
-		}
+			switch (event->key.keysym.scancode)
+			{
+			case SDL_SCANCODE_B:                                  // B = Toggle blending
+				blend = !blend;
+				if (!blend)
+				{
+					glDisable(GL_BLEND);
+					glEnable(GL_DEPTH_TEST);
+				}
+				else
+				{
+					glEnable(GL_BLEND);
+					glDisable(GL_DEPTH_TEST);
+				}
+				break;
 
-	case SDL_EVENT_KEY_UP:                                            // Has A Key Been Released?
-		{
-			break;                                                    // Jump Back
-		}
+			case SDL_SCANCODE_F:                                  // F = Cycle texture filtering
+				filter += 1;
+				if (filter > 2)
+				{
+					filter = 0;
+				}
+				break;
 
-	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                         // Resize The OpenGL Window
-		{
-			ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Width, data2=Height
-			break;                                                    // Jump Back
+			case SDL_SCANCODE_F1:
+				// Toggle Fullscreen / Windowed Mode
+				fullscreen = !fullscreen;
+				SDL_SetWindowFullscreen(win, fullscreen);
+				break;
+
+			default: break;
+			}
 		}
+		break;
+
+	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Resize The OpenGL Window
+		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Width, data2=Height
+		break;                                                    // Jump Back
+
 	default: break;
 	}
 }
@@ -490,10 +517,8 @@ int main(int argc, char *argv[])
 			WndProc(&event);                        // Deal with events
 		}
 
-		const Uint8* keys = SDL_GetKeyboardState(NULL);
-
-		// Draw The Scene.  Watch For ESC Key And Quit Messages From DrawGLScene()
-		if ((active && !DrawGLScene()) || keys[SDL_SCANCODE_ESCAPE])  // Active?  Was There A Quit Received?
+		// Draw The Scene.  Watch Quit Messages From DrawGLScene()
+		if (active && !DrawGLScene())               // Active?
 		{
 			done = true;                            // ESC or DrawGLScene Signalled A Quit
 			break;
@@ -501,39 +526,9 @@ int main(int argc, char *argv[])
 
 		SDL_GL_SwapWindow(win);                     // Swap Buffers (Double Buffering)
 
-		if (keys[SDL_SCANCODE_B] && !bpressed)
-		{
-			bpressed = true;
-			blend = !blend;
-			if (!blend)
-			{
-				glDisable(GL_BLEND);
-				glEnable(GL_DEPTH_TEST);
-			}
-			else
-			{
-				glEnable(GL_BLEND);
-				glDisable(GL_DEPTH_TEST);
-			}
-		}
-		if (!keys[SDL_SCANCODE_B])
-		{
-			bpressed = false;
-		}
 
-		if (keys[SDL_SCANCODE_F] && !fpressed)
-		{
-			fpressed = true;
-			filter += 1;
-			if (filter > 2)
-			{
-				filter = 0;
-			}
-		}
-		if (!keys[SDL_SCANCODE_F])
-		{
-			fpressed = false;
-		}
+		// Handle keyboard input
+		const Uint8* keys = SDL_GetKeyboardState(NULL);
 
 		if (keys[SDL_SCANCODE_PAGEUP])
 		{
@@ -596,18 +591,6 @@ int main(int argc, char *argv[])
 		if (keys[SDL_SCANCODE_PAGEDOWN])
 		{
 			lookupdown += 1.0f;
-		}
-
-		if (keys[SDL_SCANCODE_F1] && !f1pressed)  // Is F1 Being Pressed?
-		{
-			f1pressed = true;
-			// Toggle Fullscreen / Windowed Mode
-			fullscreen = !fullscreen;
-			SDL_SetWindowFullscreen(win, fullscreen);
-		}
-		if (!keys[SDL_SCANCODE_F1])
-		{
-			f1pressed = false;
 		}
 	}
 
