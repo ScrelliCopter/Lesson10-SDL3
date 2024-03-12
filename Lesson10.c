@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <SDL3/SDL.h>
+#define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_opengl.h>   // Header File For The OpenGL32 Library
 
@@ -237,7 +238,7 @@ int InitGL(void)                                         // All Setup For OpenGL
 	return 1;                                            // Initialization Went OK
 }
 
-int DrawGLScene(void)                                    // Here's Where We Do All The Drawing
+void DrawGLScene(void)                                   // Here's Where We Do All The Drawing
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear The Screen And The Depth Buffer
 	glLoadIdentity();                                    // Reset The View
@@ -285,7 +286,6 @@ int DrawGLScene(void)                                    // Here's Where We Do A
 			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
 		glEnd();
 	}
-	return 1;                                            // Everything Went OK
 }
 
 void KillGLWindow(void)                      // Properly Kill The Window
@@ -334,9 +334,8 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 	if (!(win = SDL_CreateWindow(title,
 		WindowRect.w,                                     // Window Width
 		WindowRect.h,                                     // Window Height
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
+		SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
 	{
-		KillGLWindow();                                   // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Window Creation Error.", NULL);
 		return false;                                     // Return FALSE
 	}
@@ -390,14 +389,12 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 
 	if (!(ctx = SDL_GL_CreateContext(win)))             // Are We Able To Get A Rendering Context?
 	{
-		KillGLWindow();                                 // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GL Rendering Context.", NULL);
 		return false;                                   // Return FALSE
 	}
 
 	if (SDL_GL_MakeCurrent(win, ctx))                   // Try To Activate The Rendering Context
 	{
-		KillGLWindow();                                 // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
 		return false;                                   // Return FALSE
 	}
@@ -408,8 +405,6 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 
 	if (!InitGL())                                      // Initialize Our Newly Created GL Window
 	{
-		FreeResources();
-		KillGLWindow();                                 // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Initialization Failed.", NULL);
 		return false;                                   // Return FALSE
 	}
@@ -417,22 +412,17 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 	return true;                                        // Success
 }
 
-
-bool done = false;  // Bool Variable To Exit Loop
-
-void WndProc(SDL_Event *event)
+int SDL_AppEvent(const SDL_Event *event)
 {
 	switch (event->type)
 	{
 	case SDL_EVENT_QUIT:                                          // Have we received a quit event?
-		done = true;                                              // If so done=TRUE
-		break;
-				
+		return 1;                                                 // Exit with success status
+
 	case SDL_EVENT_KEY_DOWN:
 		if (event->key.keysym.scancode == SDL_SCANCODE_ESCAPE)    // Quit on Escape
 		{
-			done = true;
-			break;
+			return 1;                                             // Exit with success status
 		}
 		if (!event->key.repeat)                                   // Was a key just pressed?
 		{
@@ -450,7 +440,7 @@ void WndProc(SDL_Event *event)
 					glEnable(GL_BLEND);
 					glDisable(GL_DEPTH_TEST);
 				}
-				break;
+				return 0;
 
 			case SDL_SCANCODE_F:                                  // F = Cycle texture filtering
 				filter += 1;
@@ -458,37 +448,31 @@ void WndProc(SDL_Event *event)
 				{
 					filter = 0;
 				}
-				break;
+				return 0;
 
 			case SDL_SCANCODE_F1:
 				// Toggle Fullscreen / Windowed Mode
 				fullscreen = !fullscreen;
 				SDL_SetWindowFullscreen(win, fullscreen);
-				break;
+				return 0;
 
-			default: break;
+			default: return 0;
 			}
 		}
-		break;
+		return 0;
 
 	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Resize The OpenGL Window
 		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Width, data2=Height
-		break;                                                    // Jump Back
+		return 0;
 
-	default: break;
+	default: return 0;
 	}
 }
 
-int Update(void)
+int SDL_AppIterate(void)
 {
-	// Draw The Scene.  Watch Quit Messages From DrawGLScene()
-	if (!DrawGLScene())
-	{
-		done = true;         // DrawGLScene Signalled A Quit
-		return 1;
-	}
-
-	SDL_GL_SwapWindow(win);  // Swap Buffers (Double Buffering)
+	DrawGLScene();           // Draw the scene
+	SDL_GL_SwapWindow(win);  // Swap buffers (Double buffering)
 
 	// Handle keyboard input
 	const Uint8* keys = SDL_GetKeyboardState(NULL);
@@ -559,7 +543,7 @@ int Update(void)
 	return 0;
 }
 
-int main(int argc, char *argv[])
+int SDL_AppInit(int argc, char *argv[])
 {
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -578,33 +562,21 @@ int main(int argc, char *argv[])
 	SDL_ShowMessageBox(&msgbox, &bttnid);
 	if (bttnid == 1)
 	{
-		fullscreen = false;                // Windowed Mode
+		fullscreen = false;  // Windowed Mode
 	}
 
 	// Create Our OpenGL Window
 	if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, fullscreen))
 	{
-		return 0;                          // Quit If Window Was Not Created
+		return -1;           // Quit If Window Was Not Created
 	}
+	return 0;
+}
 
-	do
-	{
-		SDL_Event event;                   // SDL Event Structure
-		while (SDL_PollEvent(&event) > 0)  // Is There A Message Waiting?
-		{
-			WndProc(&event);               // Deal with events
-		}
-
-		if (Update())
-		{
-			done = true;
-		}
-	} while (!done);
-
-
+void SDL_AppQuit()
+{
 	// Shutdown
 	FreeResources();
-	KillGLWindow();                        // Kill The Window
+	KillGLWindow();   // Kill The Window
 	SDL_Quit();
-	return EXIT_SUCCESS;                   // Exit The Program
 }
