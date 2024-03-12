@@ -35,19 +35,19 @@ static const SDL_MessageBoxButtonData yesnobttns[2] =
 	}
 };
 
-const float piover180 = 0.0174532925f;
-float heading;
-float xpos, zpos;
+typedef struct tagCAMERA
+{
+	float heading;
+	float xpos, zpos;
+	GLfloat yrot;                 // Y Rotation
+	GLfloat walkbias, walkbiasangle;
+	GLfloat lookupdown;
+	GLfloat z;                    // Depth Into The Screen
+} CAMERA;
 
-GLfloat yrot;               // Y Rotation
-GLfloat walkbias = 0.0f;
-GLfloat walkbiasangle = 0.0f;
-GLfloat lookupdown = 0.0f;
-GLfloat z = 0.0f;           // Depth Into The Screen
-
-GLuint filter;              // Which Filter To Use
-// Storage For 3 Textures
-GLuint texture[3] = { 0, 0, 0 };
+CAMERA camera;
+GLuint filter;                    // Which Filter To Use
+GLuint texture[3] = { 0, 0, 0 };  // Storage For 3 Textures
 
 typedef struct tagVERTEX
 {
@@ -138,47 +138,36 @@ bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-int LoadGLTextures(void)                // Load Bitmaps And Convert To Textures
+int LoadGLTextures(void)               // Load bitmap as textures
 {
-	int Status = SDL_FALSE;             // Status Indicator
+	SDL_Surface *TextureImage = NULL;  // Create Storage Space For The Texture
 
-	SDL_Surface *TextureImage = NULL;   // Create Storage Space For The Texture
-
-	// Load The Bitmap, Check For Errors, If Bitmap's Not Found Quit
-	if ((TextureImage = SDL_LoadBMP("Data/Mud.bmp")) && FlipSurface(TextureImage))
+	// Load & flip the bitmap, check for errors
+	if (!(TextureImage = SDL_LoadBMP("Data/Mud.bmp")) || !FlipSurface(TextureImage))
 	{
-		Status = SDL_TRUE;              // Set The Status To TRUE
-
-		glGenTextures(3, &texture[0]);  // Create Three Textures
-
-		// Create Nearest Filtered Texture
-		glBindTexture(GL_TEXTURE_2D, texture[0]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
-
-		// Create Linear Filtered Texture
-		glBindTexture(GL_TEXTURE_2D, texture[1]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
-
-		// Create MipMapped Texture
-		glBindTexture(GL_TEXTURE_2D, texture[2]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
-		glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+		return false;
 	}
-	SDL_DestroySurface(TextureImage);   // Free The Image Structure
 
-	return Status;                      // Return The Status
-}
+	glGenTextures(3, &texture[0]);     // Create three textures
+	GLint params[3][3] =
+	{
+		[0] = { GL_NEAREST, GL_NEAREST, GL_FALSE },              // Nearest filtered
+		[1] = { GL_LINEAR, GL_LINEAR, GL_FALSE },                // Linear filtered
+		[2] = { GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, GL_TRUE },  // MipMapped
+	};
+	for (int i = 0; i < 3; i++)
+	{
+		glBindTexture(GL_TEXTURE_2D, texture[i]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, params[i][0]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, params[i][1]);
+		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, params[i][2]);
+		glTexImage2D(GL_TEXTURE_2D,
+			0, 3, TextureImage->w, TextureImage->h,
+			0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+	}
 
-void FreeResources(void)
-{
-	free(sector1.triangle);
-	glDeleteTextures(3, texture);
+	SDL_DestroySurface(TextureImage);  // Free the image structure
+	return true;
 }
 
 static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar)
@@ -244,14 +233,14 @@ void DrawGLScene(void)                                   // Here's Where We Do A
 	glLoadIdentity();                                    // Reset The View
 
 	GLfloat x_m, y_m, z_m, u_m, v_m;
-	GLfloat xtrans = -xpos;
-	GLfloat ztrans = -zpos;
-	GLfloat ytrans = -walkbias - 0.25f;
-	GLfloat sceneroty = 360.0f - yrot;
+	GLfloat xtrans = -camera.xpos;
+	GLfloat ztrans = -camera.zpos;
+	GLfloat ytrans = -camera.walkbias - 0.25f;
+	GLfloat sceneroty = 360.0f - camera.yrot;
 
 	int numtriangles;
 
-	glRotatef(lookupdown, 1.0f, 0.0f, 0.0f);
+	glRotatef(camera.lookupdown, 1.0f, 0.0f, 0.0f);
 	glRotatef(sceneroty, 0.0f, 1.0f, 0.0f);
 
 	glTranslatef(xtrans, ytrans, ztrans);
@@ -478,65 +467,66 @@ int SDL_AppIterate(void)
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
-		z -= 0.02f;
+		camera.z -= 0.02f;
 	}
 
 	if (keys[SDL_SCANCODE_PAGEDOWN])
 	{
-		z += 0.02f;
+		camera.z += 0.02f;
 	}
+
+	const float piover180 = 0.0174532925f;
 
 	if (keys[SDL_SCANCODE_UP])
 	{
-
-		xpos -= (float)sin(heading * piover180) * 0.05f;
-		zpos -= (float)cos(heading * piover180) * 0.05f;
-		if (walkbiasangle >= 359.0f)
+		camera.xpos -= sinf(camera.heading * piover180) * 0.05f;
+		camera.zpos -= cosf(camera.heading * piover180) * 0.05f;
+		if (camera.walkbiasangle >= 359.0f)
 		{
-			walkbiasangle = 0.0f;
+			camera.walkbiasangle = 0.0f;
 		}
 		else
 		{
-			walkbiasangle += 10;
+			camera.walkbiasangle += 10;
 		}
-		walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
+		camera.walkbias = sinf(camera.walkbiasangle * piover180) / 20.0f;
 	}
 
 	if (keys[SDL_SCANCODE_DOWN])
 	{
-		xpos += (float)sin(heading*piover180) * 0.05f;
-		zpos += (float)cos(heading*piover180) * 0.05f;
-		if (walkbiasangle <= 1.0f)
+		camera.xpos += sinf(camera.heading * piover180) * 0.05f;
+		camera.zpos += cosf(camera.heading * piover180) * 0.05f;
+		if (camera.walkbiasangle <= 1.0f)
 		{
-			walkbiasangle = 359.0f;
+			camera.walkbiasangle = 359.0f;
 		}
 		else
 		{
-			walkbiasangle -= 10;
+			camera.walkbiasangle -= 10;
 		}
-		walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
+		camera.walkbias = sinf(camera.walkbiasangle * piover180) / 20.0f;
 	}
 
 	if (keys[SDL_SCANCODE_RIGHT])
 	{
-		heading -= 1.0f;
-		yrot = heading;
+		camera.heading -= 1.0f;
+		camera.yrot = camera.heading;
 	}
 
 	if (keys[SDL_SCANCODE_LEFT])
 	{
-		heading += 1.0f;
-		yrot = heading;
+		camera.heading += 1.0f;
+		camera.yrot = camera.heading;
 	}
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
-		lookupdown -= 1.0f;
+		camera.lookupdown -= 1.0f;
 	}
 
 	if (keys[SDL_SCANCODE_PAGEDOWN])
 	{
-		lookupdown += 1.0f;
+		camera.lookupdown += 1.0f;
 	}
 
 	return 0;
@@ -569,13 +559,30 @@ int SDL_AppInit(int argc, char *argv[])
 	{
 		return -1;           // Quit If Window Was Not Created
 	}
+
+	camera = (CAMERA)
+	{
+		.heading = 0.0f,
+		.xpos = 0.0f,
+		.zpos = 0.0f,
+		.yrot = 0.0f,
+		.walkbias = 0.0f,
+		.walkbiasangle = 0.0f,
+		.lookupdown = 0.0f,
+		.z = 0.0f
+	};
+
 	return 0;
 }
 
 void SDL_AppQuit()
 {
 	// Shutdown
-	FreeResources();
+	free(sector1.triangle);
+	if (ctx)
+	{
+		glDeleteTextures(3, texture);
+	}
 	KillGLWindow();   // Kill The Window
 	SDL_Quit();
 }
