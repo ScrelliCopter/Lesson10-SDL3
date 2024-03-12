@@ -17,7 +17,6 @@
 SDL_Window*   win = NULL;      // Holds Our Window Handle
 SDL_GLContext ctx = NULL;      // Permanent Rendering Context
 
-bool active = true;            // Window Active Flag Set To TRUE By Default
 bool fullscreen = true;        // Fullscreen Flag Set To Fullscreen Mode By Default
 bool blend = false;            // Blending ON/OFF
 
@@ -47,7 +46,7 @@ GLfloat z = 0.0f;           // Depth Into The Screen
 
 GLuint filter;              // Which Filter To Use
 // Storage For 3 Textures
-GLuint texture[3] = { 0, 0, 0};
+GLuint texture[3] = { 0, 0, 0 };
 
 typedef struct tagVERTEX
 {
@@ -480,9 +479,88 @@ void WndProc(SDL_Event *event)
 	}
 }
 
+int Update(void)
+{
+	// Draw The Scene.  Watch Quit Messages From DrawGLScene()
+	if (!DrawGLScene())
+	{
+		done = true;         // DrawGLScene Signalled A Quit
+		return 1;
+	}
+
+	SDL_GL_SwapWindow(win);  // Swap Buffers (Double Buffering)
+
+	// Handle keyboard input
+	const Uint8* keys = SDL_GetKeyboardState(NULL);
+
+	if (keys[SDL_SCANCODE_PAGEUP])
+	{
+		z -= 0.02f;
+	}
+
+	if (keys[SDL_SCANCODE_PAGEDOWN])
+	{
+		z += 0.02f;
+	}
+
+	if (keys[SDL_SCANCODE_UP])
+	{
+
+		xpos -= (float)sin(heading * piover180) * 0.05f;
+		zpos -= (float)cos(heading * piover180) * 0.05f;
+		if (walkbiasangle >= 359.0f)
+		{
+			walkbiasangle = 0.0f;
+		}
+		else
+		{
+			walkbiasangle += 10;
+		}
+		walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
+	}
+
+	if (keys[SDL_SCANCODE_DOWN])
+	{
+		xpos += (float)sin(heading*piover180) * 0.05f;
+		zpos += (float)cos(heading*piover180) * 0.05f;
+		if (walkbiasangle <= 1.0f)
+		{
+			walkbiasangle = 359.0f;
+		}
+		else
+		{
+			walkbiasangle -= 10;
+		}
+		walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
+	}
+
+	if (keys[SDL_SCANCODE_RIGHT])
+	{
+		heading -= 1.0f;
+		yrot = heading;
+	}
+
+	if (keys[SDL_SCANCODE_LEFT])
+	{
+		heading += 1.0f;
+		yrot = heading;
+	}
+
+	if (keys[SDL_SCANCODE_PAGEUP])
+	{
+		lookupdown -= 1.0f;
+	}
+
+	if (keys[SDL_SCANCODE_PAGEDOWN])
+	{
+		lookupdown += 1.0f;
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
-
 	SDL_Init(SDL_INIT_VIDEO);
 
 	// Ask The User Which Screen Mode They Prefer
@@ -500,103 +578,33 @@ int main(int argc, char *argv[])
 	SDL_ShowMessageBox(&msgbox, &bttnid);
 	if (bttnid == 1)
 	{
-		fullscreen = false;                         // Windowed Mode
+		fullscreen = false;                // Windowed Mode
 	}
 
 	// Create Our OpenGL Window
 	if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, fullscreen))
 	{
-		return 0;                                   // Quit If Window Was Not Created
+		return 0;                          // Quit If Window Was Not Created
 	}
 
-	while (!done)                                   // Loop That Runs While done=FALSE
+	do
 	{
-		SDL_Event event;                            // SDL Event Structure
-		while (SDL_PollEvent(&event) > 0)           // Is There A Message Waiting?
+		SDL_Event event;                   // SDL Event Structure
+		while (SDL_PollEvent(&event) > 0)  // Is There A Message Waiting?
 		{
-			WndProc(&event);                        // Deal with events
+			WndProc(&event);               // Deal with events
 		}
 
-		// Draw The Scene.  Watch Quit Messages From DrawGLScene()
-		if (active && !DrawGLScene())               // Active?
+		if (Update())
 		{
-			done = true;                            // ESC or DrawGLScene Signalled A Quit
-			break;
+			done = true;
 		}
+	} while (!done);
 
-		SDL_GL_SwapWindow(win);                     // Swap Buffers (Double Buffering)
-
-
-		// Handle keyboard input
-		const Uint8* keys = SDL_GetKeyboardState(NULL);
-
-		if (keys[SDL_SCANCODE_PAGEUP])
-		{
-			z -= 0.02f;
-		}
-
-		if (keys[SDL_SCANCODE_PAGEDOWN])
-		{
-			z += 0.02f;
-		}
-
-		if (keys[SDL_SCANCODE_UP])
-		{
-
-			xpos -= (float)sin(heading * piover180) * 0.05f;
-			zpos -= (float)cos(heading * piover180) * 0.05f;
-			if (walkbiasangle >= 359.0f)
-			{
-				walkbiasangle = 0.0f;
-			}
-			else
-			{
-				walkbiasangle += 10;
-			}
-			walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
-		}
-
-		if (keys[SDL_SCANCODE_DOWN])
-		{
-			xpos += (float)sin(heading*piover180) * 0.05f;
-			zpos += (float)cos(heading*piover180) * 0.05f;
-			if (walkbiasangle <= 1.0f)
-			{
-				walkbiasangle = 359.0f;
-			}
-			else
-			{
-				walkbiasangle -= 10;
-			}
-			walkbias = (float)sin(walkbiasangle * piover180) / 20.0f;
-		}
-
-		if (keys[SDL_SCANCODE_RIGHT])
-		{
-			heading -= 1.0f;
-			yrot = heading;
-		}
-
-		if (keys[SDL_SCANCODE_LEFT])
-		{
-			heading += 1.0f;
-			yrot = heading;
-		}
-
-		if (keys[SDL_SCANCODE_PAGEUP])
-		{
-			lookupdown -= 1.0f;
-		}
-
-		if (keys[SDL_SCANCODE_PAGEDOWN])
-		{
-			lookupdown += 1.0f;
-		}
-	}
 
 	// Shutdown
 	FreeResources();
-	KillGLWindow();       // Kill The Window
+	KillGLWindow();                        // Kill The Window
 	SDL_Quit();
-	return EXIT_SUCCESS;  // Exit The Program
+	return EXIT_SUCCESS;                   // Exit The Program
 }
