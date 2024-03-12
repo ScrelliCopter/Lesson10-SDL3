@@ -9,6 +9,7 @@
 #include <math.h>              // Math Library Header File
 #include <stdio.h>             // Header File For Standard Input/Output
 #include <stdlib.h>
+#include <stdbool.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_opengl.h>   // Header File For The OpenGL32 Library
@@ -90,7 +91,7 @@ void SetupWorld()
 	readstr(filein, oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
 
-	sector1.triangle = new TRIANGLE[numtriangles];
+	sector1.triangle = malloc(sizeof(TRIANGLE) * numtriangles);
 	sector1.numtriangles = numtriangles;
 	for (int loop = 0; loop < numtriangles; loop++)
 	{
@@ -118,11 +119,11 @@ bool FlipSurface(SDL_Surface *surface)
 
 	const int pitch = surface->pitch;
 	const int numrows = surface->h;
-	unsigned char *pixels = (unsigned char*)surface->pixels;
-	unsigned char *tmprow = new unsigned char[pitch];
+	unsigned char *pixels = (unsigned char *)surface->pixels;
+	unsigned char *tmprow = malloc(sizeof(unsigned char) * pitch);
 
 	unsigned char *row1 = pixels;
-	unsigned char *row2 = pixels + (numrows- 1) * pitch;
+	unsigned char *row2 = pixels + (numrows - 1) * pitch;
 	for (int i = 0; i < numrows / 2; ++i)
 	{
 		// Swap rows
@@ -134,7 +135,7 @@ bool FlipSurface(SDL_Surface *surface)
 		row2 -= pitch;
 	}
 
-	delete[] tmprow;
+	free(tmprow);
 	SDL_UnlockSurface(surface);
 	return true;
 }
