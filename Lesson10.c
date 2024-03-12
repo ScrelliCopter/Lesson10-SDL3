@@ -17,12 +17,12 @@
 SDL_Window*   win = NULL;      // Holds Our Window Handle
 SDL_GLContext ctx = NULL;      // Permanent Rendering Context
 
-bool keys[SDL_NUM_SCANCODES];  // Array Used For The Keyboard Routine
 bool active = true;            // Window Active Flag Set To TRUE By Default
 bool fullscreen = true;        // Fullscreen Flag Set To Fullscreen Mode By Default
 bool blend = false;            // Blending ON/OFF
 bool bpressed = false;         // B Pressed?
 bool fpressed = false;         // F Pressed?
+bool f1pressed = false;        // F1 Pressed
 
 static const SDL_MessageBoxButtonData yesnobttns[2] =
 {
@@ -436,13 +436,11 @@ void WndProc(SDL_Event *event)
 				
 	case SDL_EVENT_KEY_DOWN:                                          // Is A Key Being Held Down?
 		{
-			keys[event->key.keysym.scancode] = true;                  // If So, Mark It As TRUE
 			break;                                                    // Jump Back
 		}
 
 	case SDL_EVENT_KEY_UP:                                            // Has A Key Been Released?
 		{
-			keys[event->key.keysym.scancode] = false;                 // If So, Mark It As FALSE
 			break;                                                    // Jump Back
 		}
 
@@ -492,6 +490,8 @@ int main(int argc, char *argv[])
 			WndProc(&event);                        // Deal with events
 		}
 
+		const Uint8* keys = SDL_GetKeyboardState(NULL);
+
 		// Draw The Scene.  Watch For ESC Key And Quit Messages From DrawGLScene()
 		if ((active && !DrawGLScene()) || keys[SDL_SCANCODE_ESCAPE])  // Active?  Was There A Quit Received?
 		{
@@ -500,6 +500,7 @@ int main(int argc, char *argv[])
 		}
 
 		SDL_GL_SwapWindow(win);                     // Swap Buffers (Double Buffering)
+
 		if (keys[SDL_SCANCODE_B] && !bpressed)
 		{
 			bpressed = true;
@@ -597,12 +598,16 @@ int main(int argc, char *argv[])
 			lookupdown += 1.0f;
 		}
 
-		if (keys[SDL_SCANCODE_F1])          // Is F1 Being Pressed?
+		if (keys[SDL_SCANCODE_F1] && !f1pressed)  // Is F1 Being Pressed?
 		{
-			keys[SDL_SCANCODE_F1] = false;  // If So Make Key FALSE
+			f1pressed = true;
 			// Toggle Fullscreen / Windowed Mode
 			fullscreen = !fullscreen;
 			SDL_SetWindowFullscreen(win, fullscreen);
+		}
+		if (!keys[SDL_SCANCODE_F1])
+		{
+			f1pressed = false;
 		}
 	}
 
