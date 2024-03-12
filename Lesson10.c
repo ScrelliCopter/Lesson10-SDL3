@@ -14,15 +14,15 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_opengl.h>   // Header File For The OpenGL32 Library
 
-SDL_Window*   hWnd = NULL;     // Holds Our Window Handle
-SDL_GLContext hRC = NULL;      // Permanent Rendering Context
+SDL_Window*   win = NULL;      // Holds Our Window Handle
+SDL_GLContext ctx = NULL;      // Permanent Rendering Context
 
 bool keys[SDL_NUM_SCANCODES];  // Array Used For The Keyboard Routine
 bool active = true;            // Window Active Flag Set To TRUE By Default
 bool fullscreen = true;        // Fullscreen Flag Set To Fullscreen Mode By Default
-bool blend;                    // Blending ON/OFF
-bool bp;                       // B Pressed?
-bool fp;                       // F Pressed?
+bool blend = false;            // Blending ON/OFF
+bool bpressed = false;         // B Pressed?
+bool fpressed = false;         // F Pressed?
 
 static const SDL_MessageBoxButtonData yesnobttns[2] =
 {
@@ -40,17 +40,17 @@ static const SDL_MessageBoxButtonData yesnobttns[2] =
 
 const float piover180 = 0.0174532925f;
 float heading;
-float xpos;
-float zpos;
+float xpos, zpos;
 
 GLfloat yrot;               // Y Rotation
-GLfloat walkbias = 0;
-GLfloat walkbiasangle = 0;
+GLfloat walkbias = 0.0f;
+GLfloat walkbiasangle = 0.0f;
 GLfloat lookupdown = 0.0f;
 GLfloat z = 0.0f;           // Depth Into The Screen
 
 GLuint filter;              // Which Filter To Use
-GLuint texture[3];          // Storage For 3 Textures
+// Storage For 3 Textures
+GLuint texture[3] = { 0, 0, 0};
 
 typedef struct tagVERTEX
 {
@@ -69,7 +69,8 @@ typedef struct tagSECTOR
 	TRIANGLE* triangle;
 } SECTOR;
 
-SECTOR sector1;             // Our Model Goes Here:
+// Our Model Goes Here:
+SECTOR sector1 = { .numtriangles = 0, .triangle = NULL };
 
 void readstr(FILE *f, char *string)
 {
@@ -80,13 +81,13 @@ void readstr(FILE *f, char *string)
 	return;
 }
 
-void SetupWorld()
+void SetupWorld(void)
 {
 	float x, y, z, u, v;
 	int numtriangles;
 	FILE *filein;
 	char oneline[255];
-	filein = fopen("data/world.txt", "rt");  // File To Load World Data From
+	filein = fopen("data/world.txt", "r");  // File To Load World Data From
 
 	readstr(filein, oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
@@ -140,7 +141,7 @@ bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-int LoadGLTextures()                    // Load Bitmaps And Convert To Textures
+int LoadGLTextures(void)                // Load Bitmaps And Convert To Textures
 {
 	int Status = SDL_FALSE;             // Status Indicator
 
@@ -177,6 +178,12 @@ int LoadGLTextures()                    // Load Bitmaps And Convert To Textures
 	return Status;                      // Return The Status
 }
 
+void FreeResources(void)
+{
+	free(sector1.triangle);
+	glDeleteTextures(3, texture);
+}
+
 static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar)
 {
 	double h = 1.0 / tan(fovy * (SDL_PI_D / 180.0) * 0.5);
@@ -194,7 +201,7 @@ static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdou
 	glLoadMatrixd(mtx);
 }
 
-GLvoid ReSizeGLScene(GLsizei width, GLsizei height)      // Resize And Initialize The GL Window
+void ReSizeGLScene(GLsizei width, GLsizei height)        // Resize And Initialize The GL Window
 {
 	if (height == 0)                                     // Prevent A Divide By Zero By
 	{
@@ -213,7 +220,7 @@ GLvoid ReSizeGLScene(GLsizei width, GLsizei height)      // Resize And Initializ
 	glLoadIdentity();                                    // Reset The Modelview Matrix
 }
 
-int InitGL()                                             // All Setup For OpenGL Goes Here
+int InitGL(void)                                         // All Setup For OpenGL Goes Here
 {
 	if (!LoadGLTextures())                               // Jump To Texture Loading Routine
 	{
@@ -234,7 +241,7 @@ int InitGL()                                             // All Setup For OpenGL
 	return 1;                                            // Initialization Went OK
 }
 
-int DrawGLScene()                                        // Here's Where We Do All The Drawing
+int DrawGLScene(void)                                    // Here's Where We Do All The Drawing
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear The Screen And The Depth Buffer
 	glLoadIdentity();                                    // Reset The View
@@ -249,12 +256,12 @@ int DrawGLScene()                                        // Here's Where We Do A
 
 	glRotatef(lookupdown, 1.0f, 0.0f, 0.0f);
 	glRotatef(sceneroty, 0.0f, 1.0f, 0.0f);
-	
+
 	glTranslatef(xtrans, ytrans, ztrans);
 	glBindTexture(GL_TEXTURE_2D, texture[filter]);
-	
+
 	numtriangles = sector1.numtriangles;
-	
+
 	// Process Each Triangle
 	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
 	{
@@ -266,14 +273,14 @@ int DrawGLScene()                                        // Here's Where We Do A
 			u_m = sector1.triangle[loop_m].vertex[0].u;
 			v_m = sector1.triangle[loop_m].vertex[0].v;
 			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
-			
+
 			x_m = sector1.triangle[loop_m].vertex[1].x;
 			y_m = sector1.triangle[loop_m].vertex[1].y;
 			z_m = sector1.triangle[loop_m].vertex[1].z;
 			u_m = sector1.triangle[loop_m].vertex[1].u;
 			v_m = sector1.triangle[loop_m].vertex[1].v;
 			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
-			
+
 			x_m = sector1.triangle[loop_m].vertex[2].x;
 			y_m = sector1.triangle[loop_m].vertex[2].y;
 			z_m = sector1.triangle[loop_m].vertex[2].z;
@@ -285,27 +292,27 @@ int DrawGLScene()                                        // Here's Where We Do A
 	return 1;                                            // Everything Went OK
 }
 
-GLvoid KillGLWindow()                        // Properly Kill The Window
+void KillGLWindow(void)                      // Properly Kill The Window
 {
 	if (fullscreen)                          // Are We In Fullscreen Mode?
 	{
-		SDL_SetWindowFullscreen(hWnd, 0);    // If So Switch Back To The Desktop
+		SDL_SetWindowFullscreen(win, 0);     // If So Switch Back To The Desktop
 		SDL_ShowCursor();                    // Show Mouse Pointer
 	}
 
-	if (hRC)                                 // Do We Have A Rendering Context?
+	if (ctx)                                 // Do We Have A Rendering Context?
 	{
-		if (SDL_GL_MakeCurrent(hWnd, NULL))  // Are We Able To Release The DC And RC Contexts?
+		if (SDL_GL_MakeCurrent(win, NULL))   // Are We Able To Release The DC And RC Contexts?
 		{
 			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
 		}
 
-		SDL_GL_DeleteContext(hRC);           // Delete The RC
-		hRC = NULL;                          // Set RC To NULL
+		SDL_GL_DeleteContext(ctx);           // Delete The RC
+		ctx = NULL;                          // Set RC To NULL
 	}
 
-	SDL_DestroyWindow(hWnd);                 // Destroy The Window
-	hWnd = NULL;                             // Set hWnd To NULL
+	SDL_DestroyWindow(win);                  // Destroy The Window
+	win = NULL;                              // Set hWnd To NULL
 }
 
 
@@ -317,7 +324,7 @@ GLvoid KillGLWindow()                        // Properly Kill The Window
  *  fullscreenflag  - Use Fullscreen Mode (TRUE) Or Windowed Mode (FALSE)   */
 
 
-bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscreenflag)
+bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscreenflag)
 {
 	SDL_Rect WindowRect;                                  // Grabs Rectangle Upper Left / Lower Right Values
 	WindowRect.x = 0;                                     // Set Left Value To 0
@@ -328,7 +335,7 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 	fullscreen = fullscreenflag;                          // Set The Global Fullscreen Flag
 
 	// Create The Window
-	if (!(hWnd = SDL_CreateWindow(title,
+	if (!(win = SDL_CreateWindow(title,
 		WindowRect.w,                                     // Window Width
 		WindowRect.h,                                     // Window Height
 		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
@@ -340,13 +347,13 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 
 	if (fullscreen)                                       // Attempt Fullscreen Mode?
 	{
-		if (SDL_SetWindowFullscreen(hWnd, SDL_TRUE) < 0)  // Try To Set Selected Mode And Get Results.
+		if (SDL_SetWindowFullscreen(win, SDL_TRUE) < 0)   // Try To Set Selected Mode And Get Results.
 		{
 			// If The Mode Fails, Offer Two Options.  Quit Or Use Windowed Mode.
 			const SDL_MessageBoxData msgbox =
 			{
 				SDL_MESSAGEBOX_INFORMATION,
-				hWnd,
+				win,
 				"NeHe GL",
 				"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?",
 				2,
@@ -385,26 +392,27 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);        // No Stencil Buffer
 
 
-	if (!(hRC = SDL_GL_CreateContext(hWnd)))            // Are We Able To Get A Rendering Context?
+	if (!(ctx = SDL_GL_CreateContext(win)))             // Are We Able To Get A Rendering Context?
 	{
 		KillGLWindow();                                 // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GL Rendering Context.", NULL);
 		return false;                                   // Return FALSE
 	}
 
-	if (SDL_GL_MakeCurrent(hWnd, hRC))                  // Try To Activate The Rendering Context
+	if (SDL_GL_MakeCurrent(win, ctx))                   // Try To Activate The Rendering Context
 	{
 		KillGLWindow();                                 // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
 		return false;                                   // Return FALSE
 	}
 
-	SDL_ShowWindow(hWnd);
+	SDL_ShowWindow(win);
 	SDL_GL_SetSwapInterval(1);
 	ReSizeGLScene(width, height);                       // Set Up Our Perspective GL Screen
 
 	if (!InitGL())                                      // Initialize Our Newly Created GL Window
 	{
+		FreeResources();
 		KillGLWindow();                                 // Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Initialization Failed.", NULL);
 		return false;                                   // Return FALSE
@@ -413,7 +421,7 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 	return true;                                        // Success
 }
 
-void WndProc(SDL_Event* uMsg)
+void WndProc(SDL_Event *uMsg)
 {
 	switch (uMsg->type)                                             // Check For Windows Messages
 	{
@@ -437,7 +445,7 @@ void WndProc(SDL_Event* uMsg)
 	}
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
 	SDL_Event msg;                                  // Windows Message Structure
 	bool done = false;                              // Bool Variable To Exit Loop
@@ -448,7 +456,7 @@ int main(int argc, char* argv[])
 	const SDL_MessageBoxData msgbox =
 	{
 		/* flags       */ SDL_MESSAGEBOX_INFORMATION,
-		/* window      */ hWnd,
+		/* window      */ win,
 		/* title       */ "Start FullScreen?",
 		/* message     */ "Would You Like To Run In Fullscreen Mode?",
 		/* numbuttons  */ 2,
@@ -490,10 +498,10 @@ int main(int argc, char* argv[])
 			}
 			else                                    // Not Time To Quit, Update Screen
 			{
-				SDL_GL_SwapWindow(hWnd);            // Swap Buffers (Double Buffering)
-				if (keys[SDL_SCANCODE_B] && !bp)
+				SDL_GL_SwapWindow(win);             // Swap Buffers (Double Buffering)
+				if (keys[SDL_SCANCODE_B] && !bpressed)
 				{
-					bp = true;
+					bpressed = true;
 					blend = !blend;
 					if (!blend)
 					{
@@ -508,12 +516,12 @@ int main(int argc, char* argv[])
 				}
 				if (!keys[SDL_SCANCODE_B])
 				{
-					bp = false;
+					bpressed = false;
 				}
 
-				if (keys[SDL_SCANCODE_F] && !fp)
+				if (keys[SDL_SCANCODE_F] && !fpressed)
 				{
-					fp = true;
+					fpressed = true;
 					filter += 1;
 					if (filter > 2)
 					{
@@ -522,7 +530,7 @@ int main(int argc, char* argv[])
 				}
 				if (!keys[SDL_SCANCODE_F])
 				{
-					fp = false;
+					fpressed = false;
 				}
 
 				if (keys[SDL_SCANCODE_PAGEUP])
@@ -591,6 +599,7 @@ int main(int argc, char* argv[])
 				if (keys[SDL_SCANCODE_F1])          // Is F1 Being Pressed?
 				{
 					keys[SDL_SCANCODE_F1] = false;  // If So Make Key FALSE
+					FreeResources();
 					KillGLWindow();                 // Kill Our Current Window
 					fullscreen = !fullscreen;       // Toggle Fullscreen / Windowed Mode
 					// Recreate Our OpenGL Window
@@ -604,6 +613,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Shutdown
+	FreeResources();
 	KillGLWindow();       // Kill The Window
 	SDL_Quit();
 	return EXIT_SUCCESS;  // Exit The Program
