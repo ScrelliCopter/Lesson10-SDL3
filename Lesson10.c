@@ -600,14 +600,9 @@ int main(int argc, char *argv[])
 		if (keys[SDL_SCANCODE_F1])          // Is F1 Being Pressed?
 		{
 			keys[SDL_SCANCODE_F1] = false;  // If So Make Key FALSE
-			FreeResources();
-			KillGLWindow();                 // Kill Our Current Window
-			fullscreen = !fullscreen;       // Toggle Fullscreen / Windowed Mode
-			// Recreate Our OpenGL Window
-			if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, fullscreen))
-			{
-				return 0;                   // Quit If Window Was Not Created
-			}
+			// Toggle Fullscreen / Windowed Mode
+			fullscreen = !fullscreen;
+			SDL_SetWindowFullscreen(win, fullscreen);
 		}
 	}
 
