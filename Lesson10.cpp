@@ -85,7 +85,7 @@ void SetupWorld()
 	int numtriangles;
 	FILE *filein;
 	char oneline[255];
-	filein = fopen("data/world.txt", "rt");				// File To Load World Data From
+	filein = fopen("data/world.txt", "rt");			// File To Load World Data From
 
 	readstr(filein,oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
@@ -137,41 +137,41 @@ bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-int LoadGLTextures()                                    // Load Bitmaps And Convert To Textures
+int LoadGLTextures()								// Load Bitmaps And Convert To Textures
 {
-        int Status=SDL_FALSE;                           // Status Indicator
+	int Status=SDL_FALSE;							// Status Indicator
 
-        SDL_Surface *TextureImage = NULL;               // Create Storage Space For The Texture
+	SDL_Surface *TextureImage = NULL;				// Create Storage Space For The Texture
 
-        // Load The Bitmap, Check For Errors, If Bitmap's Not Found Quit
-        if ((TextureImage=SDL_LoadBMP("Data/Mud.bmp")) && FlipSurface(TextureImage))
-        {
-                Status=SDL_TRUE;                        // Set The Status To TRUE
+	// Load The Bitmap, Check For Errors, If Bitmap's Not Found Quit
+	if ((TextureImage=SDL_LoadBMP("Data/Mud.bmp")) && FlipSurface(TextureImage))
+	{
+		Status=SDL_TRUE;							// Set The Status To TRUE
 
-                glGenTextures(3, &texture[0]);          // Create Three Textures
+		glGenTextures(3, &texture[0]);				// Create Three Textures
 
-				// Create Nearest Filtered Texture
-				glBindTexture(GL_TEXTURE_2D, texture[0]);
-				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-				glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+		// Create Nearest Filtered Texture
+		glBindTexture(GL_TEXTURE_2D, texture[0]);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+		glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
 
-                // Create Linear Filtered Texture
-                glBindTexture(GL_TEXTURE_2D, texture[1]);
-                glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-                glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+		// Create Linear Filtered Texture
+		glBindTexture(GL_TEXTURE_2D, texture[1]);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
 
-				// Create MipMapped Texture
-				glBindTexture(GL_TEXTURE_2D, texture[2]);
-				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D,GL_GENERATE_MIPMAP,GL_TRUE);
-				glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
-        }
-        SDL_DestroySurface(TextureImage);				// Free The Image Structure
+		// Create MipMapped Texture
+		glBindTexture(GL_TEXTURE_2D, texture[2]);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D,GL_GENERATE_MIPMAP,GL_TRUE);
+		glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
+	}
+	SDL_DestroySurface(TextureImage);				// Free The Image Structure
 
-        return Status;									// Return The Status
+	return Status;									// Return The Status
 }
 
 static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar)
@@ -286,7 +286,7 @@ GLvoid KillGLWindow(GLvoid)								// Properly Kill The Window
 {
 	if (fullscreen)										// Are We In Fullscreen Mode?
 	{
-		SDL_SetWindowFullscreen(hWnd, 0);               // If So Switch Back To The Desktop
+		SDL_SetWindowFullscreen(hWnd, 0);				// If So Switch Back To The Desktop
 		SDL_ShowCursor();								// Show Mouse Pointer
 	}
 
@@ -306,38 +306,38 @@ GLvoid KillGLWindow(GLvoid)								// Properly Kill The Window
 }
 
 
-/*	This Code Creates Our OpenGL Window.  Parameters Are:					*
- *	title			- Title To Appear At The Top Of The Window				*
- *	width			- Width Of The GL Window Or Fullscreen Mode				*
- *	height			- Height Of The GL Window Or Fullscreen Mode			*
- *	bits			- Number Of Bits To Use For Color (8/16/24/32)			*
- *	fullscreenflag	- Use Fullscreen Mode (TRUE) Or Windowed Mode (FALSE)	*/
+/*  This Code Creates Our OpenGL Window.  Parameters Are:                   *
+ *  title           - Title To Appear At The Top Of The Window              *
+ *  width           - Width Of The GL Window Or Fullscreen Mode             *
+ *  height          - Height Of The GL Window Or Fullscreen Mode            *
+ *  bits            - Number Of Bits To Use For Color (8/16/24/32)          *
+ *  fullscreenflag  - Use Fullscreen Mode (TRUE) Or Windowed Mode (FALSE)   */
 
 
 bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscreenflag)
 {
-	SDL_Rect	WindowRect;				// Grabs Rectangle Upper Left / Lower Right Values
-	WindowRect.x=0;						// Set Left Value To 0
-	WindowRect.w=width;					// Set Right Value To Requested Width
-	WindowRect.y=0;						// Set Top Value To 0
-	WindowRect.h=height;				// Set Bottom Value To Requested Height
+	SDL_Rect	WindowRect;									// Grabs Rectangle Upper Left / Lower Right Values
+	WindowRect.x=0;											// Set Left Value To 0
+	WindowRect.w=width;										// Set Right Value To Requested Width
+	WindowRect.y=0;											// Set Top Value To 0
+	WindowRect.h=height;									// Set Bottom Value To Requested Height
 
-	fullscreen=fullscreenflag;			// Set The Global Fullscreen Flag
+	fullscreen=fullscreenflag;								// Set The Global Fullscreen Flag
 
 	// Create The Window
 	if (!(hWnd = SDL_CreateWindow(title,
-								WindowRect.w,										// Window Width
-								WindowRect.h,										// Window Height
-								SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
+		WindowRect.w,										// Window Width
+		WindowRect.h,										// Window Height
+		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
 	{
-		KillGLWindow();								// Reset The Display
+		KillGLWindow();										// Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Window Creation Error.", NULL);
-		return false;								// Return FALSE
+		return false;										// Return FALSE
 	}
 
-	if (fullscreen)												// Attempt Fullscreen Mode?
+	if (fullscreen)											// Attempt Fullscreen Mode?
 	{
-		if (SDL_SetWindowFullscreen(hWnd, SDL_TRUE) < 0)		// Try To Set Selected Mode And Get Results.
+		if (SDL_SetWindowFullscreen(hWnd, SDL_TRUE) < 0)	// Try To Set Selected Mode And Get Results.
 		{
 			// If The Mode Fails, Offer Two Options.  Quit Or Use Windowed Mode.
 			const SDL_MessageBoxData msgbox =
@@ -354,13 +354,13 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 			SDL_ShowMessageBox(&msgbox, &bttnid);
 			if (bttnid == 0)
 			{
-				fullscreen=false;		// Windowed Mode Selected.  Fullscreen = FALSE
+				fullscreen=false;							// Windowed Mode Selected.  Fullscreen = FALSE
 			}
 			else
 			{
 				// Pop Up A Message Box Letting User Know The Program Is Closing.
 				SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "ERROR", "Program Will Now Close.", NULL);
-				return false;									// Return FALSE
+				return false;								// Return FALSE
 			}
 		}
 	}
@@ -382,62 +382,62 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);		// No Stencil Buffer
 
 
-	if (!(hRC=SDL_GL_CreateContext(hWnd)))			// Are We Able To Get A Rendering Context?
+	if (!(hRC=SDL_GL_CreateContext(hWnd)))				// Are We Able To Get A Rendering Context?
 	{
-		KillGLWindow();								// Reset The Display
+		KillGLWindow();									// Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GL Rendering Context.", NULL);
-		return false;								// Return FALSE
+		return false;									// Return FALSE
 	}
 
-	if(SDL_GL_MakeCurrent(hWnd, hRC))				// Try To Activate The Rendering Context
+	if(SDL_GL_MakeCurrent(hWnd, hRC))					// Try To Activate The Rendering Context
 	{
-		KillGLWindow();								// Reset The Display
+		KillGLWindow();									// Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
-		return false;								// Return FALSE
+		return false;									// Return FALSE
 	}
 
 	SDL_ShowWindow(hWnd);
 	SDL_GL_SetSwapInterval(1);
-	ReSizeGLScene(width, height);					// Set Up Our Perspective GL Screen
+	ReSizeGLScene(width, height);						// Set Up Our Perspective GL Screen
 
-	if (!InitGL())									// Initialize Our Newly Created GL Window
+	if (!InitGL())										// Initialize Our Newly Created GL Window
 	{
-		KillGLWindow();								// Reset The Display
+		KillGLWindow();									// Reset The Display
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Initialization Failed.", NULL);
-		return false;								// Return FALSE
+		return false;									// Return FALSE
 	}
 
-	return true;									// Success
+	return true;										// Success
 }
 
 void WndProc(SDL_Event* uMsg)
 {
-	switch (uMsg->type)								// Check For Windows Messages
+	switch (uMsg->type)									// Check For Windows Messages
 	{
-		case SDL_EVENT_KEY_DOWN:					// Is A Key Being Held Down?
+		case SDL_EVENT_KEY_DOWN:						// Is A Key Being Held Down?
 		{
-			keys[uMsg->key.keysym.scancode] = true;					// If So, Mark It As TRUE
-			break; 								// Jump Back
+			keys[uMsg->key.keysym.scancode] = true;		// If So, Mark It As TRUE
+			break; 										// Jump Back
 		}
 
-		case SDL_EVENT_KEY_UP:						// Has A Key Been Released?
+		case SDL_EVENT_KEY_UP:							// Has A Key Been Released?
 		{
-			keys[uMsg->key.keysym.scancode] = false;					// If So, Mark It As FALSE
-			break; 								// Jump Back
+			keys[uMsg->key.keysym.scancode] = false;	// If So, Mark It As FALSE
+			break; 										// Jump Back
 		}
 
-		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:	// Resize The OpenGL Window
+		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:		// Resize The OpenGL Window
 		{
 			ReSizeGLScene(uMsg->window.data1,uMsg->window.data2);  // LoWord=Width, HiWord=Height
-			break; 									// Jump Back
+			break; 										// Jump Back
 		}
 	}
 }
 
 int main(int argc, char* argv[])
 {
-	SDL_Event	msg;									// Windows Message Structure
-	bool	    done=false;								// Bool Variable To Exit Loop
+	SDL_Event	msg;								// Windows Message Structure
+	bool		done=false;							// Bool Variable To Exit Loop
 
 	SDL_Init(SDL_INIT_VIDEO);
 
