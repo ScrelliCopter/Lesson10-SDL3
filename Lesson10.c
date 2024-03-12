@@ -39,14 +39,14 @@ typedef struct tagCAMERA
 {
 	float heading;
 	float xpos, zpos;
-	GLfloat yrot;                 // Y Rotation
-	GLfloat walkbias, walkbiasangle;
-	GLfloat lookupdown;
-	GLfloat z;                    // Depth Into The Screen
+	float yrot;                   // Y Rotation
+	float walkbias, walkbiasangle;
+	float lookupdown;
+	float z;                      // Depth Into The Screen
 } CAMERA;
 
 CAMERA camera;
-GLuint filter;                    // Which Filter To Use
+unsigned filter;                  // Which Filter To Use
 GLuint texture[3] = { 0, 0, 0 };  // Storage For 3 Textures
 
 typedef struct tagVERTEX
@@ -138,7 +138,7 @@ bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-int LoadGLTextures(void)               // Load bitmap as textures
+bool LoadGLTextures(void)              // Load bitmap as textures
 {
 	SDL_Surface *TextureImage = NULL;  // Create Storage Space For The Texture
 
@@ -177,7 +177,7 @@ static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdou
 	double invcliprng = 1.0 / (zFar - zNear);
 	double z = -(zFar + zNear) * invcliprng;
 	double z2 = -(2.0 * zFar * zNear) * invcliprng;
-	double mtx[16] =
+	GLdouble mtx[16] =
 	{
 		w,   0.0, 0.0, 0.0,
 		0.0, h,   0.0, 0.0,
@@ -187,7 +187,7 @@ static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdou
 	glLoadMatrixd(mtx);
 }
 
-void ReSizeGLScene(GLsizei width, GLsizei height)        // Resize And Initialize The GL Window
+void ReSizeGLScene(int width, int height)                // Resize And Initialize The GL Window
 {
 	if (height == 0)                                     // Prevent A Divide By Zero By
 	{
@@ -200,17 +200,17 @@ void ReSizeGLScene(GLsizei width, GLsizei height)        // Resize And Initializ
 	glLoadIdentity();                                    // Reset The Projection Matrix
 
 	// Calculate The Aspect Ratio Of The Window
-	gluPerspective(45.0f, (GLfloat)width / (GLfloat)height, 0.1f, 100.0f);
+	gluPerspective(45.0f, (float)width / (float)height, 0.1f, 100.0f);
 
 	glMatrixMode(GL_MODELVIEW);                          // Select The Modelview Matrix
 	glLoadIdentity();                                    // Reset The Modelview Matrix
 }
 
-int InitGL(void)                                         // All Setup For OpenGL Goes Here
+bool InitGL(void)                                        // All Setup For OpenGL Goes Here
 {
 	if (!LoadGLTextures())                               // Jump To Texture Loading Routine
 	{
-		return 0;                                        // If Texture Didn't Load Return FALSE
+		return false;
 	}
 
 	glEnable(GL_TEXTURE_2D);                             // Enable Texture Mapping
@@ -224,7 +224,7 @@ int InitGL(void)                                         // All Setup For OpenGL
 
 	SetupWorld();
 
-	return 1;                                            // Initialization Went OK
+	return true;                                         // Initialization Went OK
 }
 
 void DrawGLScene(void)                                   // Here's Where We Do All The Drawing
@@ -277,27 +277,27 @@ void DrawGLScene(void)                                   // Here's Where We Do A
 	}
 }
 
-void KillGLWindow(void)                      // Properly Kill The Window
+void KillGLWindow(void)                           // Properly Kill The Window
 {
-	if (fullscreen)                          // Are We In Fullscreen Mode?
+	if (fullscreen)                               // Are We In Fullscreen Mode?
 	{
-		SDL_SetWindowFullscreen(win, 0);     // If So Switch Back To The Desktop
-		SDL_ShowCursor();                    // Show Mouse Pointer
+		SDL_SetWindowFullscreen(win, SDL_FALSE);  // If So Switch Back To The Desktop
+		SDL_ShowCursor();                         // Show Mouse Pointer
 	}
 
-	if (ctx)                                 // Do We Have A Rendering Context?
+	if (ctx)                                      // Do We Have A Rendering Context?
 	{
-		if (SDL_GL_MakeCurrent(win, NULL))   // Are We Able To Release The DC And RC Contexts?
+		if (SDL_GL_MakeCurrent(win, NULL))        // Are We Able To Release The DC And RC Contexts?
 		{
 			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
 		}
 
-		SDL_GL_DeleteContext(ctx);           // Delete The RC
-		ctx = NULL;                          // Set RC To NULL
+		SDL_GL_DeleteContext(ctx);                // Delete The RC
+		ctx = NULL;                               // Set RC To NULL
 	}
 
-	SDL_DestroyWindow(win);                  // Destroy The Window
-	win = NULL;                              // Set hWnd To NULL
+	SDL_DestroyWindow(win);                       // Destroy The Window
+	win = NULL;                                   // Set hWnd To NULL
 }
 
 
