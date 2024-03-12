@@ -408,15 +408,15 @@ int SDL_AppEvent(const SDL_Event *event)
 		return 1;                                                 // Exit with success status
 
 	case SDL_EVENT_KEY_DOWN:
-		if (event->key.keysym.scancode == SDL_SCANCODE_ESCAPE)    // Quit on Escape
+		if (event->key.keysym.sym == SDLK_ESCAPE)                 // Quit on Escape
 		{
 			return 1;                                             // Exit with success status
 		}
 		if (!event->key.repeat)                                   // Was a key just pressed?
 		{
-			switch (event->key.keysym.scancode)
+			switch (event->key.keysym.sym)
 			{
-			case SDL_SCANCODE_B:                                  // B = Toggle blending
+			case SDLK_b:                                          // B = Toggle blending
 				blend = !blend;
 				if (!blend)
 				{
@@ -430,7 +430,7 @@ int SDL_AppEvent(const SDL_Event *event)
 				}
 				return 0;
 
-			case SDL_SCANCODE_F:                                  // F = Cycle texture filtering
+			case SDLK_f:                                          // F = Cycle texture filtering
 				filter += 1;
 				if (filter > 2)
 				{
@@ -438,8 +438,7 @@ int SDL_AppEvent(const SDL_Event *event)
 				}
 				return 0;
 
-			case SDL_SCANCODE_F1:
-				// Toggle Fullscreen / Windowed Mode
+			case SDLK_F1:                                         // F1 = Toggle Fullscreen / Windowed Mode
 				fullscreen = !fullscreen;
 				SDL_SetWindowFullscreen(win, fullscreen);
 				return 0;
@@ -449,8 +448,8 @@ int SDL_AppEvent(const SDL_Event *event)
 		}
 		return 0;
 
-	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Resize The OpenGL Window
-		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Width, data2=Height
+	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Deal with window resizes
+		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Backbuffer Width, data2=Backbuffer Height
 		return 0;
 
 	default: return 0;
