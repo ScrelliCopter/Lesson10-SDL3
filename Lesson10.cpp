@@ -11,11 +11,7 @@
 #include <stdlib.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#define GL_GLEXT_PROTOTYPES
 #include <SDL3/SDL_opengl.h>		// Header File For The OpenGL32 Library
-#ifdef _WIN32
-# include <gl/GLU.h>
-#endif
 
 SDL_Window*   hWnd=NULL;			// Holds Our Window Handle
 SDL_GLContext hRC=NULL;				// Permanent Rendering Context
@@ -170,12 +166,8 @@ int LoadGLTextures()                                    // Load Bitmaps And Conv
 				glBindTexture(GL_TEXTURE_2D, texture[2]);
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
-#ifndef _WIN32
+				glTexParameteri(GL_TEXTURE_2D,GL_GENERATE_MIPMAP,GL_TRUE);
 				glTexImage2D(GL_TEXTURE_2D, 0, 3, TextureImage->w, TextureImage->h, 0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
-				glGenerateMipmap(GL_TEXTURE_2D);
-#else
-				gluBuild2DMipmaps(GL_TEXTURE_2D, 3, TextureImage->w, TextureImage->h, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
-#endif
         }
         SDL_DestroySurface(TextureImage);				// Free The Image Structure
 
@@ -375,7 +367,7 @@ bool CreateGLWindow(char* title, int width, int height, int bits, bool fullscree
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);		// Must Support Double Buffering
 	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);			// Select Our Color Depth
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);			// Color Bits Ignored

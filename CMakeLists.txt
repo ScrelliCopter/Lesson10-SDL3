@@ -8,7 +8,7 @@ add_executable(Lesson10 Lesson10.cpp)
 set_target_properties(Lesson10 PROPERTIES
 	CXX_STANDARD 98
 	WIN32_EXECUTABLE ON)
-target_link_libraries(Lesson10 SDL3::SDL3 OpenGL::GL $<$<PLATFORM_ID:Windows>:OpenGL::GLU>)
+target_link_libraries(Lesson10 SDL3::SDL3 OpenGL::GL)
 target_compile_options(Lesson10 PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -pedantic>)
 target_compile_definitions(Lesson10 PRIVATE $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
 
