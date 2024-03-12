@@ -18,7 +18,7 @@
 SDL_Window*   win = NULL;      // Holds Our Window Handle
 SDL_GLContext ctx = NULL;      // Permanent Rendering Context
 
-bool fullscreen = true;        // Fullscreen Flag Set To Fullscreen Mode By Default
+bool fullscreen = false;
 bool blend = false;            // Blending ON/OFF
 
 static const SDL_MessageBoxButtonData yesnobttns[2] =
@@ -346,16 +346,13 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 			};
 			int bttnid = 0;
 			SDL_ShowMessageBox(&msgbox, &bttnid);
-			if (bttnid == 0)
-			{
-				fullscreen = false;                       // Windowed Mode Selected.  Fullscreen = FALSE
-			}
-			else
+			if (bttnid == 1)
 			{
 				// Pop Up A Message Box Letting User Know The Program Is Closing.
 				SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "ERROR", "Program Will Now Close.", NULL);
 				return false;                             // Return FALSE
 			}
+			fullscreen = false;
 		}
 	}
 
@@ -439,8 +436,7 @@ int SDL_AppEvent(const SDL_Event *event)
 				return 0;
 
 			case SDLK_F1:                                         // F1 = Toggle Fullscreen / Windowed Mode
-				fullscreen = !fullscreen;
-				SDL_SetWindowFullscreen(win, fullscreen);
+				SDL_SetWindowFullscreen(win, !fullscreen);
 				return 0;
 
 			default: return 0;
@@ -451,6 +447,14 @@ int SDL_AppEvent(const SDL_Event *event)
 	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Deal with window resizes
 		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Backbuffer Width, data2=Backbuffer Height
 		return 0;
+
+		case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+			fullscreen = true;
+			return 0;
+
+		case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+			fullscreen = false;
+			return 0;
 
 	default: return 0;
 	}
@@ -548,13 +552,10 @@ int SDL_AppInit(int argc, char *argv[])
 	};
 	int bttnid = 1;
 	SDL_ShowMessageBox(&msgbox, &bttnid);
-	if (bttnid == 1)
-	{
-		fullscreen = false;  // Windowed Mode
-	}
 
 	// Create Our OpenGL Window
-	if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, fullscreen))
+	const bool wantfullscreen = (bttnid == 0);
+	if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, wantfullscreen))
 	{
 		return -1;           // Quit If Window Was Not Created
 	}
