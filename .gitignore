@@ -1,0 +1,12 @@
+.vs/
+.vscode/
+.idea/
+CMakeSettings.json
+
+out/
+build/
+xcode/
+cmake-build-*/
+
+Thumbs.db
+.DS_Store
