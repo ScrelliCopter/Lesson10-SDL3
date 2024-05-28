@@ -1,19 +1,19 @@
 /*
- *      This code was created by Lionel Brits & Jeff Molofee 2000.
- *      A HUGE thanks to Fredric Echols for cleaning up
- *      and optimizing the base code, making it more flexible!
- *      If you've found this code useful, please let me know.
- *      Visit my site at https://nehe.gamedev.net
+ *  This code was created by Lionel Brits & Jeff Molofee 2000.
+ *  A HUGE thanks to Fredric Echols for cleaning up
+ *  and optimizing the base code, making it more flexible!
+ *  If you've found this code useful, please let me know.
+ *  Visit my site at https://nehe.gamedev.net
  */
 
-#include <math.h>              // Standard math library
-#include <stdio.h>             // Standard input/output
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
-#include <SDL3/SDL_opengl.h>   // SDL wrapper header for the OpenGL library
+#include <SDL3/SDL_opengl.h>
 
 #define BTTN_YES 0
 #define BTTN_NO  1
@@ -47,10 +47,10 @@ typedef struct tagCAMERA
 {
 	float heading;
 	float xpos, zpos;
-	float yrot;                   // Y rotation
+	float yrot;
 	float walkbias, walkbiasangle;
 	float lookupdown;
-	float z;                      // Depth into the screen
+	float z;
 } CAMERA;
 
 typedef struct tagVERTEX
@@ -72,16 +72,16 @@ typedef struct tagSECTOR
 
 typedef struct tagAPPSTATE
 {
-	SDL_Window   *win;         // Holds our window handle
-	SDL_GLContext ctx;         // OpenGL rendering context
+	SDL_Window   *win;
+	SDL_GLContext ctx;
 
 	bool fullscreen, blend;
 
 	CAMERA camera;
-	unsigned filter;           // Which filter to use
-	GLuint texture[3];         // Storage for 3 textures
+	unsigned filter;    // Filtered texture selection
+	GLuint texture[3];  // Filtered textures
 
-	SECTOR sector1;            // Our model goes here
+	SECTOR sector1;
 } APPSTATE;
 
 static void readstr(FILE *f, char *string)
@@ -153,11 +153,11 @@ static bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-static bool LoadGLTextures(APPSTATE *state)                      // Load bitmap as textures
+static bool LoadGLTextures(APPSTATE *state)
 {
-	SDL_Surface *TextureImage = NULL;                            // Create storage space for the texture
+	SDL_Surface *TextureImage = NULL;
 
-	// Load & flip the bitmap, check for errors
+	// Load & flip the bitmap
 	if (!(TextureImage = SDL_LoadBMP("Data/Mud.bmp")) || !FlipSurface(TextureImage))
 	{
 		return false;
@@ -181,7 +181,8 @@ static bool LoadGLTextures(APPSTATE *state)                      // Load bitmap 
 			0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
 	}
 
-	SDL_DestroySurface(TextureImage);                            // Free the image structure
+	// Free temporary surface
+	SDL_DestroySurface(TextureImage);
 	return true;
 }
 
@@ -202,50 +203,53 @@ static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdou
 	glLoadMatrixd(mtx);
 }
 
-static void ReSizeGLScene(int width, int height)         // Resize and initialize the OpenGL window
+/*  Set viewport size and setup matrices         *
+ *  width   - Width of the OpenGL framebuffer    *
+ *  height  - Height of the OpenGL framebuffer   */
+static void ReSizeGLScene(int width, int height)
 {
-	if (height == 0)                                     // Prevent division by zero by making height non-zero
+	if (height == 0)                              // Prevent division-by-zero by ensuring height is non-zero
 	{
 		height = 1;
 	}
 
-	glViewport(0, 0, width, height);                     // Reset the current viewport
+	glViewport(0, 0, width, height);              // Reset the current viewport
 
-	glMatrixMode(GL_PROJECTION);                         // Select the projection matrix
-	glLoadIdentity();                                    // Reset the projection matrix
+	glMatrixMode(GL_PROJECTION);                  // Select & reset the projection matrix
+	glLoadIdentity();
 
-	// Calculate The Aspect Ratio Of The Window
-	gluPerspective(45.0f, (float)width / (float)height, 0.1f, 100.0f);
+	float aspect = (float)width / (float)height;  // Calculate aspect ratio
+	gluPerspective(45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
 
-	glMatrixMode(GL_MODELVIEW);                          // Select the modelview matrix
-	glLoadIdentity();                                    // Reset the modelview matrix
+	glMatrixMode(GL_MODELVIEW);                   // Select & reset the modelview matrix
+	glLoadIdentity();
 }
 
-static bool InitGL(APPSTATE *state)                      // All setup for OpenGL goes here
+static bool InitGL(APPSTATE *state)
 {
-	if (!LoadGLTextures(state))                          // Call texture loading function
+	if (!LoadGLTextures(state))                         // Load textures
 	{
 		return false;
 	}
 
-	glEnable(GL_TEXTURE_2D);                             // Enable texture mapping
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);                   // Set the blending function for translucency
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);                // Set the background clear color to black
-	glClearDepth(1.0);                                   // Ensure depth buffer clears to furthest value
-	glDepthFunc(GL_LESS);                                // Pass if pixel depth value tests less than the depth buffer value
-	glEnable(GL_DEPTH_TEST);                             // Enable depth testing
-	glShadeModel(GL_SMOOTH);                             // Enable Smooth color shading
-	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);   // Request the implementation to use perspective correct interpolation
+	glEnable(GL_TEXTURE_2D);                            // Enable texture mapping
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);                  // Set the blending function for translucency
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);               // Set the background clear color to black
+	glClearDepth(1.0);                                  // Ensure depth buffer clears to furthest value
+	glDepthFunc(GL_LESS);                               // Pass if pixel depth value tests less than the depth buffer value
+	glEnable(GL_DEPTH_TEST);                            // Enable depth testing
+	glShadeModel(GL_SMOOTH);                            // Enable Smooth color shading
+	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Request the implementation to use perspective correct interpolation
 
 	SetupWorld(state);
 
-	return true;                                         // Initialization went OK
+	return true;
 }
 
-static void DrawGLScene(APPSTATE *state)                 // Here's where we do all the drawing
+static void DrawGLScene(APPSTATE *state)
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear the screen and the depth buffer
-	glLoadIdentity();                                    // Reset the view
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear the color and depth buffers
+	glLoadIdentity();                                    // Reset modelview
 
 	GLfloat x_m, y_m, z_m, u_m, v_m;
 	GLfloat xtrans = -state->camera.xpos;
@@ -263,7 +267,6 @@ static void DrawGLScene(APPSTATE *state)                 // Here's where we do a
 
 	numtriangles = state->sector1.numtriangles;
 
-	// Process Each Triangle
 	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
 	{
 		glBegin(GL_TRIANGLES);
@@ -292,27 +295,29 @@ static void DrawGLScene(APPSTATE *state)                 // Here's where we do a
 	}
 }
 
-static void KillGLWindow(APPSTATE *state)                // Properly kill the window
+static void KillGLWindow(APPSTATE *state)
 {
-	if (state->fullscreen)                               // Are we in fullscreen mode?
+	// Restore windowed state & cursor visibility
+	if (state->fullscreen)
 	{
-		SDL_SetWindowFullscreen(state->win, SDL_FALSE);  // If so switch back to the desktop
-		SDL_ShowCursor();                                // Show mouse pointer
+		SDL_SetWindowFullscreen(state->win, SDL_FALSE);
+		SDL_ShowCursor();
 	}
 
-	if (state->ctx)                                      // Do we have a rendering context?
+	// Release and delete rendering context
+	if (state->ctx)
 	{
-		if (SDL_GL_MakeCurrent(state->win, NULL))        // Are we able to release the DC and RC contexts?
+		if (SDL_GL_MakeCurrent(state->win, NULL))
 		{
 			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
 		}
 
-		SDL_GL_DeleteContext(state->ctx);                // Delete the RC
-		state->ctx = NULL;                               // Set RC to NULL
+		SDL_GL_DeleteContext(state->ctx);
+		state->ctx = NULL;
 	}
 
-	SDL_DestroyWindow(state->win);                       // Destroy the window
-	state->win = NULL;                                   // Set hWnd to NULL
+	SDL_DestroyWindow(state->win);
+	state->win = NULL;
 }
 
 
@@ -324,36 +329,28 @@ static void KillGLWindow(APPSTATE *state)                // Properly kill the wi
  *  fullscreenflag  - Use fullscreen mode (true) Or windowed mode (false)   */
 static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, int bits, bool fullscreenflag)
 {
-	SDL_Rect WindowRect;                                        // Grabs rectangle upper left / lower right values
-	WindowRect.x = 0;                                           // Set left value to 0
-	WindowRect.w = width;                                       // Set right value to requested width
-	WindowRect.y = 0;                                           // Set top value to 0
-	WindowRect.h = height;                                      // Set bottom value to requested height
+	state->fullscreen = fullscreenflag;
 
-	state->fullscreen = fullscreenflag;                         // Set the fullscreen flag
-
-	// Create The Window
-	if (!(state->win = SDL_CreateWindow(title,
-		WindowRect.w,                                           // Window width
-		WindowRect.h,                                           // Window height
+	if (!(state->win = SDL_CreateWindow(title, width, height,
 		SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Window Creation Error.", NULL);
-		return false;                                           // Return false
+		return false;
 	}
 
-	if (fullscreenflag)                                         // Attempt fullscreen mode?
+	// Try entering fullscreen mode if requested
+	if (fullscreenflag)
 	{
-		if (SDL_SetWindowFullscreen(state->win, SDL_TRUE) < 0)  // Try to set selected mode and get results
+		if (SDL_SetWindowFullscreen(state->win, SDL_TRUE) < 0)
 		{
 			// If mode switching fails, ask the user to quit or use to windowed mode
 			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe GL",
 				"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?");
 			if (bttnid == BTTN_NO)
 			{
-				// Show a meessage box letting the user know the program is closing
+				// User chose to quit
 				SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "ERROR", "Program Will Now Close.", NULL);
-				return false;                                   // Return false
+				return false;
 			}
 			state->fullscreen = false;
 		}
@@ -362,42 +359,42 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);                // Must support double buffering
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);                    // Color bits ignored
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);           // Double buffered framebuffer
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);               // Color bits ignored
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);                  // No alpha buffer
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 0);            // No accumulation buffer
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE, 0);              // Accumulation bits ignored
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);             // No alpha buffer
+	SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 0);       // No accumulation buffer
+	SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE, 0);         // Accumulation bits ignored
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_GREEN_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_BLUE_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);                 // 16-bit Z-buffer (depth buffer)
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);                // No stencil buffer
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);            // 16-bit Z-buffer (depth buffer)
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);           // No stencil buffer
 
 
-	if (!(state->ctx = SDL_GL_CreateContext(state->win)))       // Are we able to get a rendering context?
+	if (!(state->ctx = SDL_GL_CreateContext(state->win)))  // Create rendering context
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GL Rendering Context.", NULL);
-		return false;                                           // Return false
+		return false;
 	}
 
-	if (SDL_GL_MakeCurrent(state->win, state->ctx))             // Try to activate the rendering context
+	if (SDL_GL_MakeCurrent(state->win, state->ctx))        // Activate the rendering context
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
-		return false;                                           // Return false
+		return false;
 	}
 
 	SDL_ShowWindow(state->win);
-	SDL_GL_SetSwapInterval(1);
-	ReSizeGLScene(width, height);                               // Set up our perspective OpenGL screen
+	SDL_GL_SetSwapInterval(1);                             // Enable VSync
+	ReSizeGLScene(width, height);                          // Set up our viewport and perspective
 
-	if (!InitGL(state))                                         // Initialize our newly created OpenGL window
+	if (!InitGL(state))                                    // Initialize the scene
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Initialization Failed.", NULL);
-		return false;                                           // Return false
+		return false;
 	}
 
-	return true;                                                // Success
+	return true;
 }
 
 int SDL_AppEvent(void *appstate, const SDL_Event *event)
@@ -406,12 +403,12 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 	switch (event->type)
 	{
 	case SDL_EVENT_QUIT:                                          // Have we received a quit event?
-		return SDL_APP_SUCCESS;                                   // Exit with success status
+		return SDL_APP_SUCCESS;
 
 	case SDL_EVENT_KEY_DOWN:
 		if (event->key.keysym.sym == SDLK_ESCAPE)                 // Quit on escape key
 		{
-			return SDL_APP_SUCCESS;                               // Exit with success status
+			return SDL_APP_SUCCESS;
 		}
 		if (!event->key.repeat)                                   // Was a key just pressed?
 		{
@@ -559,7 +556,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
 		.ctx = NULL,
 
 		.fullscreen = false,
-		.blend = false,          // Blending off
+		.blend = false,  // Blending off
 
 		.camera = (CAMERA)
 		{
@@ -586,7 +583,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
 	const bool wantfullscreen = (bttnid == BTTN_YES);
 	if (!CreateGLWindow(state, "Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, wantfullscreen))
 	{
-		return SDL_APP_FAILURE;  // Quit if window was not created
+		return SDL_APP_FAILURE;
 	}
 
 	return SDL_APP_CONTINUE;
@@ -594,7 +591,6 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
 
 void SDL_AppQuit(void *appstate)
 {
-	// Shutdown
 	if (appstate)
 	{
 		APPSTATE *state = (APPSTATE *)appstate;
@@ -603,8 +599,9 @@ void SDL_AppQuit(void *appstate)
 		{
 			glDeleteTextures(3, state->texture);
 		}
-		KillGLWindow(state);  // Kill the window
+		KillGLWindow(state);
 		free(state);
 	}
+
 	SDL_Quit();
 }
