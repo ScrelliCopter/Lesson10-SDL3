@@ -15,6 +15,6 @@ target_compile_definitions(Lesson10 PRIVATE $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECUR
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	get_property(SDL3_IMPORTED_LOCATION TARGET SDL3::SDL3 PROPERTY IMPORTED_LOCATION)
 	if (SDL3_IMPORTED_LOCATION MATCHES "^/Library/Frameworks/")
-		target_link_options(Lesson10 PRIVATE -Wl,-rpath,/Library/Frameworks)
+		set_property(TARGET Lesson10 PROPERTY BUILD_RPATH "/Library/Frameworks")
 	endif()
 endif()
