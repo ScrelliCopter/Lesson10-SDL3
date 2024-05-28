@@ -15,25 +15,33 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_opengl.h>   // Header File For The OpenGL32 Library
 
-SDL_Window   *win = NULL;      // Holds Our Window Handle
-SDL_GLContext ctx = NULL;      // Permanent Rendering Context
+#define BTTN_YES 0
+#define BTTN_NO  1
 
-bool fullscreen = false;
-bool blend = false;            // Blending ON/OFF
-
-static const SDL_MessageBoxButtonData yesnobttns[2] =
+static int ShowYesNoMessageBox(SDL_Window *window, int defaultbttn, const char *title, const char *message)
 {
+	const SDL_MessageBoxButtonFlags defaultflags =
+		SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
+	const SDL_MessageBoxButtonData yesnobttns[2] =
 	{
-		/*flags    */ 0,
-		/*buttonid */ 0,
-		/*text     */ "Yes"
-	},
+		{ .flags = defaultbttn == BTTN_YES ? defaultflags : 0, .buttonID = BTTN_YES, .text = "Yes" },
+		{ .flags = defaultbttn == BTTN_NO  ? defaultflags : 0, .buttonID = BTTN_NO,  .text = "No"  }
+	};
+	const SDL_MessageBoxData msgbox =
 	{
-		/*flags    */ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,
-		/*buttonid */ 1,
-		/*text     */ "No"
-	}
-};
+		.flags       = SDL_MESSAGEBOX_INFORMATION,
+		.window      = window,
+		.title       = title,
+		.message     = message,
+		.numbuttons  = 2,
+		.buttons     = yesnobttns,
+		.colorScheme = NULL
+	};
+
+	int bttnid = defaultbttn;
+	SDL_ShowMessageBox(&msgbox, &bttnid);
+	return bttnid;
+}
 
 typedef struct tagCAMERA
 {
@@ -44,10 +52,6 @@ typedef struct tagCAMERA
 	float lookupdown;
 	float z;                      // Depth Into The Screen
 } CAMERA;
-
-CAMERA camera;
-unsigned filter;                  // Which Filter To Use
-GLuint texture[3] = { 0, 0, 0 };  // Storage For 3 Textures
 
 typedef struct tagVERTEX
 {
@@ -66,10 +70,21 @@ typedef struct tagSECTOR
 	TRIANGLE *triangle;
 } SECTOR;
 
-// Our Model Goes Here:
-SECTOR sector1 = { .numtriangles = 0, .triangle = NULL };
+typedef struct tagAPPSTATE
+{
+	SDL_Window   *win;         // Holds Our Window Handle
+	SDL_GLContext ctx;         // Permanent Rendering Context
 
-void readstr(FILE *f, char *string)
+	bool fullscreen, blend;
+
+	CAMERA camera;
+	unsigned filter;           // Which Filter To Use
+	GLuint texture[3];         // Storage For 3 Textures
+
+	SECTOR sector1;            // Our Model Goes Here
+} APPSTATE;
+
+static void readstr(FILE *f, char *string)
 {
 	do
 	{
@@ -78,7 +93,7 @@ void readstr(FILE *f, char *string)
 	return;
 }
 
-void SetupWorld(void)
+static void SetupWorld(APPSTATE *state)
 {
 	float x, y, z, u, v;
 	int numtriangles;
@@ -89,26 +104,26 @@ void SetupWorld(void)
 	readstr(filein, oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
 
-	sector1.triangle = malloc(sizeof(TRIANGLE) * numtriangles);
-	sector1.numtriangles = numtriangles;
+	state->sector1.triangle = malloc(sizeof(TRIANGLE) * numtriangles);
+	state->sector1.numtriangles = numtriangles;
 	for (int loop = 0; loop < numtriangles; loop++)
 	{
 		for (int vert = 0; vert < 3; vert++)
 		{
 			readstr(filein, oneline);
 			sscanf(oneline, "%f %f %f %f %f", &x, &y, &z, &u, &v);
-			sector1.triangle[loop].vertex[vert].x = x;
-			sector1.triangle[loop].vertex[vert].y = y;
-			sector1.triangle[loop].vertex[vert].z = z;
-			sector1.triangle[loop].vertex[vert].u = u;
-			sector1.triangle[loop].vertex[vert].v = v;
+			state->sector1.triangle[loop].vertex[vert].x = x;
+			state->sector1.triangle[loop].vertex[vert].y = y;
+			state->sector1.triangle[loop].vertex[vert].z = z;
+			state->sector1.triangle[loop].vertex[vert].u = u;
+			state->sector1.triangle[loop].vertex[vert].v = v;
 		}
 	}
 	fclose(filein);
 	return;
 }
 
-bool FlipSurface(SDL_Surface *surface)
+static bool FlipSurface(SDL_Surface *surface)
 {
 	if (!surface || SDL_LockSurface(surface) < 0)
 	{
@@ -138,9 +153,9 @@ bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-bool LoadGLTextures(void)              // Load bitmap as textures
+static bool LoadGLTextures(APPSTATE *state)                      // Load bitmap as textures
 {
-	SDL_Surface *TextureImage = NULL;  // Create Storage Space For The Texture
+	SDL_Surface *TextureImage = NULL;                            // Create Storage Space For The Texture
 
 	// Load & flip the bitmap, check for errors
 	if (!(TextureImage = SDL_LoadBMP("Data/Mud.bmp")) || !FlipSurface(TextureImage))
@@ -148,7 +163,7 @@ bool LoadGLTextures(void)              // Load bitmap as textures
 		return false;
 	}
 
-	glGenTextures(3, &texture[0]);     // Create three textures
+	glGenTextures(3, &state->texture[0]);                        // Create three textures
 	GLint params[3][3] =
 	{
 		[0] = { GL_NEAREST, GL_NEAREST, GL_FALSE },              // Nearest filtered
@@ -157,7 +172,7 @@ bool LoadGLTextures(void)              // Load bitmap as textures
 	};
 	for (int i = 0; i < 3; i++)
 	{
-		glBindTexture(GL_TEXTURE_2D, texture[i]);
+		glBindTexture(GL_TEXTURE_2D, state->texture[i]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, params[i][0]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, params[i][1]);
 		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, params[i][2]);
@@ -166,7 +181,7 @@ bool LoadGLTextures(void)              // Load bitmap as textures
 			0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
 	}
 
-	SDL_DestroySurface(TextureImage);  // Free the image structure
+	SDL_DestroySurface(TextureImage);                            // Free the image structure
 	return true;
 }
 
@@ -187,7 +202,7 @@ static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdou
 	glLoadMatrixd(mtx);
 }
 
-void ReSizeGLScene(int width, int height)                // Resize And Initialize The GL Window
+static void ReSizeGLScene(int width, int height)         // Resize And Initialize The GL Window
 {
 	if (height == 0)                                     // Prevent A Divide By Zero By
 	{
@@ -206,9 +221,9 @@ void ReSizeGLScene(int width, int height)                // Resize And Initializ
 	glLoadIdentity();                                    // Reset The Modelview Matrix
 }
 
-bool InitGL(void)                                        // All Setup For OpenGL Goes Here
+static bool InitGL(APPSTATE *state)                      // All Setup For OpenGL Goes Here
 {
-	if (!LoadGLTextures())                               // Jump To Texture Loading Routine
+	if (!LoadGLTextures(state))                          // Jump To Texture Loading Routine
 	{
 		return false;
 	}
@@ -222,82 +237,82 @@ bool InitGL(void)                                        // All Setup For OpenGL
 	glShadeModel(GL_SMOOTH);                             // Enables Smooth Color Shading
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);   // Really Nice Perspective Calculations
 
-	SetupWorld();
+	SetupWorld(state);
 
 	return true;                                         // Initialization Went OK
 }
 
-void DrawGLScene(void)                                   // Here's Where We Do All The Drawing
+static void DrawGLScene(APPSTATE *state)                 // Here's Where We Do All The Drawing
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear The Screen And The Depth Buffer
 	glLoadIdentity();                                    // Reset The View
 
 	GLfloat x_m, y_m, z_m, u_m, v_m;
-	GLfloat xtrans = -camera.xpos;
-	GLfloat ztrans = -camera.zpos;
-	GLfloat ytrans = -camera.walkbias - 0.25f;
-	GLfloat sceneroty = 360.0f - camera.yrot;
+	GLfloat xtrans = -state->camera.xpos;
+	GLfloat ztrans = -state->camera.zpos;
+	GLfloat ytrans = -state->camera.walkbias - 0.25f;
+	GLfloat sceneroty = 360.0f - state->camera.yrot;
 
 	int numtriangles;
 
-	glRotatef(camera.lookupdown, 1.0f, 0.0f, 0.0f);
+	glRotatef(state->camera.lookupdown, 1.0f, 0.0f, 0.0f);
 	glRotatef(sceneroty, 0.0f, 1.0f, 0.0f);
 
 	glTranslatef(xtrans, ytrans, ztrans);
-	glBindTexture(GL_TEXTURE_2D, texture[filter]);
+	glBindTexture(GL_TEXTURE_2D, state->texture[state->filter]);
 
-	numtriangles = sector1.numtriangles;
+	numtriangles = state->sector1.numtriangles;
 
 	// Process Each Triangle
 	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
 	{
 		glBegin(GL_TRIANGLES);
 			glNormal3f(0.0f, 0.0f, 1.0f);
-			x_m = sector1.triangle[loop_m].vertex[0].x;
-			y_m = sector1.triangle[loop_m].vertex[0].y;
-			z_m = sector1.triangle[loop_m].vertex[0].z;
-			u_m = sector1.triangle[loop_m].vertex[0].u;
-			v_m = sector1.triangle[loop_m].vertex[0].v;
+			x_m = state->sector1.triangle[loop_m].vertex[0].x;
+			y_m = state->sector1.triangle[loop_m].vertex[0].y;
+			z_m = state->sector1.triangle[loop_m].vertex[0].z;
+			u_m = state->sector1.triangle[loop_m].vertex[0].u;
+			v_m = state->sector1.triangle[loop_m].vertex[0].v;
 			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
 
-			x_m = sector1.triangle[loop_m].vertex[1].x;
-			y_m = sector1.triangle[loop_m].vertex[1].y;
-			z_m = sector1.triangle[loop_m].vertex[1].z;
-			u_m = sector1.triangle[loop_m].vertex[1].u;
-			v_m = sector1.triangle[loop_m].vertex[1].v;
+			x_m = state->sector1.triangle[loop_m].vertex[1].x;
+			y_m = state->sector1.triangle[loop_m].vertex[1].y;
+			z_m = state->sector1.triangle[loop_m].vertex[1].z;
+			u_m = state->sector1.triangle[loop_m].vertex[1].u;
+			v_m = state->sector1.triangle[loop_m].vertex[1].v;
 			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
 
-			x_m = sector1.triangle[loop_m].vertex[2].x;
-			y_m = sector1.triangle[loop_m].vertex[2].y;
-			z_m = sector1.triangle[loop_m].vertex[2].z;
-			u_m = sector1.triangle[loop_m].vertex[2].u;
-			v_m = sector1.triangle[loop_m].vertex[2].v;
+			x_m = state->sector1.triangle[loop_m].vertex[2].x;
+			y_m = state->sector1.triangle[loop_m].vertex[2].y;
+			z_m = state->sector1.triangle[loop_m].vertex[2].z;
+			u_m = state->sector1.triangle[loop_m].vertex[2].u;
+			v_m = state->sector1.triangle[loop_m].vertex[2].v;
 			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
 		glEnd();
 	}
 }
 
-void KillGLWindow(void)                           // Properly Kill The Window
+static void KillGLWindow(APPSTATE *state)                // Properly Kill The Window
 {
-	if (fullscreen)                               // Are We In Fullscreen Mode?
+	if (state->fullscreen)                               // Are We In Fullscreen Mode?
 	{
-		SDL_SetWindowFullscreen(win, SDL_FALSE);  // If So Switch Back To The Desktop
-		SDL_ShowCursor();                         // Show Mouse Pointer
+		SDL_SetWindowFullscreen(state->win, SDL_FALSE);  // If So Switch Back To The Desktop
+		SDL_ShowCursor();                                // Show Mouse Pointer
 	}
 
-	if (ctx)                                      // Do We Have A Rendering Context?
+	if (state->ctx)                                      // Do We Have A Rendering Context?
 	{
-		if (SDL_GL_MakeCurrent(win, NULL))        // Are We Able To Release The DC And RC Contexts?
+		if (SDL_GL_MakeCurrent(state->win, NULL))        // Are We Able To Release The DC And RC Contexts?
 		{
 			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
 		}
 
-		SDL_GL_DeleteContext(ctx);                // Delete The RC
-		ctx = NULL;                               // Set RC To NULL
+		SDL_GL_DeleteContext(state->ctx);                // Delete The RC
+		state->ctx = NULL;                               // Set RC To NULL
 	}
 
-	SDL_DestroyWindow(win);                       // Destroy The Window
-	win = NULL;                                   // Set hWnd To NULL
+	SDL_DestroyWindow(state->win);                       // Destroy The Window
+	state->win = NULL;                                   // Set hWnd To NULL
 }
 
 
@@ -309,96 +324,87 @@ void KillGLWindow(void)                           // Properly Kill The Window
  *  fullscreenflag  - Use Fullscreen Mode (TRUE) Or Windowed Mode (FALSE)   */
 
 
-bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscreenflag)
+static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, int bits, bool fullscreenflag)
 {
-	SDL_Rect WindowRect;                                  // Grabs Rectangle Upper Left / Lower Right Values
-	WindowRect.x = 0;                                     // Set Left Value To 0
-	WindowRect.w = width;                                 // Set Right Value To Requested Width
-	WindowRect.y = 0;                                     // Set Top Value To 0
-	WindowRect.h = height;                                // Set Bottom Value To Requested Height
+	SDL_Rect WindowRect;                                        // Grabs Rectangle Upper Left / Lower Right Values
+	WindowRect.x = 0;                                           // Set Left Value To 0
+	WindowRect.w = width;                                       // Set Right Value To Requested Width
+	WindowRect.y = 0;                                           // Set Top Value To 0
+	WindowRect.h = height;                                      // Set Bottom Value To Requested Height
 
-	fullscreen = fullscreenflag;                          // Set The Global Fullscreen Flag
+	state->fullscreen = fullscreenflag;                         // Set The Global Fullscreen Flag
 
 	// Create The Window
-	if (!(win = SDL_CreateWindow(title,
-		WindowRect.w,                                     // Window Width
-		WindowRect.h,                                     // Window Height
+	if (!(state->win = SDL_CreateWindow(title,
+		WindowRect.w,                                           // Window Width
+		WindowRect.h,                                           // Window Height
 		SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Window Creation Error.", NULL);
-		return false;                                     // Return FALSE
+		return false;                                           // Return FALSE
 	}
 
-	if (fullscreen)                                       // Attempt Fullscreen Mode?
+	if (fullscreenflag)                                         // Attempt Fullscreen Mode?
 	{
-		if (SDL_SetWindowFullscreen(win, SDL_TRUE) < 0)   // Try To Set Selected Mode And Get Results.
+		if (SDL_SetWindowFullscreen(state->win, SDL_TRUE) < 0)  // Try To Set Selected Mode And Get Results.
 		{
 			// If The Mode Fails, Offer Two Options.  Quit Or Use Windowed Mode.
-			const SDL_MessageBoxData msgbox =
-			{
-				SDL_MESSAGEBOX_INFORMATION,
-				win,
-				"NeHe GL",
-				"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?",
-				2,
-				yesnobttns,
-				NULL
-			};
-			int bttnid = 0;
-			SDL_ShowMessageBox(&msgbox, &bttnid);
-			if (bttnid == 1)
+			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe GL",
+				"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?");
+			if (bttnid == BTTN_NO)
 			{
 				// Pop Up A Message Box Letting User Know The Program Is Closing.
 				SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "ERROR", "Program Will Now Close.", NULL);
-				return false;                             // Return FALSE
+				return false;                                   // Return FALSE
 			}
-			fullscreen = false;
+			state->fullscreen = false;
 		}
 	}
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);        // Must Support Double Buffering
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);            // Color Bits Ignored
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);                // Must Support Double Buffering
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);                    // Color Bits Ignored
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);          // No Alpha Buffer
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 0);    // No Accumulation Buffer
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE, 0);      // Accumulation Bits Ignored
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);                  // No Alpha Buffer
+	SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 0);            // No Accumulation Buffer
+	SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE, 0);              // Accumulation Bits Ignored
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_GREEN_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_ACCUM_BLUE_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);         // 16Bit Z-Buffer (Depth Buffer)
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);        // No Stencil Buffer
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);                 // 16Bit Z-Buffer (Depth Buffer)
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);                // No Stencil Buffer
 
 
-	if (!(ctx = SDL_GL_CreateContext(win)))             // Are We Able To Get A Rendering Context?
+	if (!(state->ctx = SDL_GL_CreateContext(state->win)))       // Are We Able To Get A Rendering Context?
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GL Rendering Context.", NULL);
-		return false;                                   // Return FALSE
+		return false;                                           // Return FALSE
 	}
 
-	if (SDL_GL_MakeCurrent(win, ctx))                   // Try To Activate The Rendering Context
+	if (SDL_GL_MakeCurrent(state->win, state->ctx))             // Try To Activate The Rendering Context
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
-		return false;                                   // Return FALSE
+		return false;                                           // Return FALSE
 	}
 
-	SDL_ShowWindow(win);
+	SDL_ShowWindow(state->win);
 	SDL_GL_SetSwapInterval(1);
-	ReSizeGLScene(width, height);                       // Set Up Our Perspective GL Screen
+	ReSizeGLScene(width, height);                               // Set Up Our Perspective GL Screen
 
-	if (!InitGL())                                      // Initialize Our Newly Created GL Window
+	if (!InitGL(state))                                         // Initialize Our Newly Created GL Window
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Initialization Failed.", NULL);
-		return false;                                   // Return FALSE
+		return false;                                           // Return FALSE
 	}
 
-	return true;                                        // Success
+	return true;                                                // Success
 }
 
 int SDL_AppEvent(void *appstate, const SDL_Event *event)
 {
+	APPSTATE *state = (APPSTATE *)appstate;
 	switch (event->type)
 	{
 	case SDL_EVENT_QUIT:                                          // Have we received a quit event?
@@ -414,8 +420,8 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 			switch (event->key.keysym.sym)
 			{
 			case SDLK_b:                                          // B = Toggle blending
-				blend = !blend;
-				if (!blend)
+				state->blend = !state->blend;
+				if (!state->blend)
 				{
 					glDisable(GL_BLEND);
 					glEnable(GL_DEPTH_TEST);
@@ -428,15 +434,15 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 				break;
 
 			case SDLK_f:                                          // F = Cycle texture filtering
-				filter += 1;
-				if (filter > 2)
+				state->filter += 1;
+				if (state->filter > 2)
 				{
-					filter = 0;
+					state->filter = 0;
 				}
 				break;
 
 			case SDLK_F1:                                         // F1 = Toggle Fullscreen / Windowed Mode
-				SDL_SetWindowFullscreen(win, !fullscreen);
+				SDL_SetWindowFullscreen(state->win, !state->fullscreen);
 				break;
 
 			default: break;
@@ -449,11 +455,11 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 		break;
 
 		case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
-			fullscreen = true;
+			state->fullscreen = true;
 			break;
 
 		case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
-			fullscreen = false;
+			state->fullscreen = false;
 			break;
 
 	default: break;
@@ -463,74 +469,75 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 
 int SDL_AppIterate(void *appstate)
 {
-	DrawGLScene();           // Draw the scene
-	SDL_GL_SwapWindow(win);  // Swap buffers (Double buffering)
+	APPSTATE *state = (APPSTATE *)appstate;
+	DrawGLScene(state);             // Draw the scene
+	SDL_GL_SwapWindow(state->win);  // Swap buffers (Double buffering)
 
 	// Handle keyboard input
 	const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
-		camera.z -= 0.02f;
+		state->camera.z -= 0.02f;
 	}
 
 	if (keys[SDL_SCANCODE_PAGEDOWN])
 	{
-		camera.z += 0.02f;
+		state->camera.z += 0.02f;
 	}
 
 	const float piover180 = 0.0174532925f;
 
 	if (keys[SDL_SCANCODE_UP])
 	{
-		camera.xpos -= sinf(camera.heading * piover180) * 0.05f;
-		camera.zpos -= cosf(camera.heading * piover180) * 0.05f;
-		if (camera.walkbiasangle >= 359.0f)
+		state->camera.xpos -= sinf(state->camera.heading * piover180) * 0.05f;
+		state->camera.zpos -= cosf(state->camera.heading * piover180) * 0.05f;
+		if (state->camera.walkbiasangle >= 359.0f)
 		{
-			camera.walkbiasangle = 0.0f;
+			state->camera.walkbiasangle = 0.0f;
 		}
 		else
 		{
-			camera.walkbiasangle += 10;
+			state->camera.walkbiasangle += 10;
 		}
-		camera.walkbias = sinf(camera.walkbiasangle * piover180) / 20.0f;
+		state->camera.walkbias = sinf(state->camera.walkbiasangle * piover180) / 20.0f;
 	}
 
 	if (keys[SDL_SCANCODE_DOWN])
 	{
-		camera.xpos += sinf(camera.heading * piover180) * 0.05f;
-		camera.zpos += cosf(camera.heading * piover180) * 0.05f;
-		if (camera.walkbiasangle <= 1.0f)
+		state->camera.xpos += sinf(state->camera.heading * piover180) * 0.05f;
+		state->camera.zpos += cosf(state->camera.heading * piover180) * 0.05f;
+		if (state->camera.walkbiasangle <= 1.0f)
 		{
-			camera.walkbiasangle = 359.0f;
+			state->camera.walkbiasangle = 359.0f;
 		}
 		else
 		{
-			camera.walkbiasangle -= 10;
+			state->camera.walkbiasangle -= 10;
 		}
-		camera.walkbias = sinf(camera.walkbiasangle * piover180) / 20.0f;
+		state->camera.walkbias = sinf(state->camera.walkbiasangle * piover180) / 20.0f;
 	}
 
 	if (keys[SDL_SCANCODE_RIGHT])
 	{
-		camera.heading -= 1.0f;
-		camera.yrot = camera.heading;
+		state->camera.heading -= 1.0f;
+		state->camera.yrot = state->camera.heading;
 	}
 
 	if (keys[SDL_SCANCODE_LEFT])
 	{
-		camera.heading += 1.0f;
-		camera.yrot = camera.heading;
+		state->camera.heading += 1.0f;
+		state->camera.yrot = state->camera.heading;
 	}
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
-		camera.lookupdown -= 1.0f;
+		state->camera.lookupdown -= 1.0f;
 	}
 
 	if (keys[SDL_SCANCODE_PAGEDOWN])
 	{
-		camera.lookupdown += 1.0f;
+		state->camera.lookupdown += 1.0f;
 	}
 
 	return SDL_APP_CONTINUE;
@@ -543,38 +550,46 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
 		return SDL_APP_FAILURE;
 	}
 
-	// Ask The User Which Screen Mode They Prefer
-	const SDL_MessageBoxData msgbox =
+	APPSTATE *state = *appstate = malloc(sizeof(APPSTATE));
+	if (!state)
 	{
-		/* flags       */ SDL_MESSAGEBOX_INFORMATION,
-		/* window      */ win,
-		/* title       */ "Start FullScreen?",
-		/* message     */ "Would You Like To Run In Fullscreen Mode?",
-		/* numbuttons  */ 2,
-		/* buttons     */ yesnobttns,
-		/* colorScheme */ NULL
+		return SDL_APP_FAILURE;
+	}
+	*state = (APPSTATE)
+	{
+		.win = NULL,
+		.ctx = NULL,
+
+		.fullscreen = false,
+		.blend = false,          // Blending OFF
+
+		.camera = (CAMERA)
+		{
+			.heading = 0.0f,
+			.xpos = 0.0f,
+			.zpos = 0.0f,
+			.yrot = 0.0f,
+			.walkbias = 0.0f,
+			.walkbiasangle = 0.0f,
+			.lookupdown = 0.0f,
+			.z = 0.0f
+		},
+
+		.filter = 0,
+		.texture = { 0, 0, 0 },
+		.sector1 = (SECTOR){ .numtriangles = 0, .triangle = NULL }
 	};
-	int bttnid = 1;
-	SDL_ShowMessageBox(&msgbox, &bttnid);
+
+	// Ask The User Which Screen Mode They Prefer
+	int bttnid = ShowYesNoMessageBox(state->win, BTTN_NO, "Start FullScreen?",
+		"Would You Like To Run In Fullscreen Mode?");
 
 	// Create Our OpenGL Window
-	const bool wantfullscreen = (bttnid == 0);
-	if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, wantfullscreen))
+	const bool wantfullscreen = (bttnid == BTTN_YES);
+	if (!CreateGLWindow(state, "Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, wantfullscreen))
 	{
 		return SDL_APP_FAILURE;  // Quit If Window Was Not Created
 	}
-
-	camera = (CAMERA)
-	{
-		.heading = 0.0f,
-		.xpos = 0.0f,
-		.zpos = 0.0f,
-		.yrot = 0.0f,
-		.walkbias = 0.0f,
-		.walkbiasangle = 0.0f,
-		.lookupdown = 0.0f,
-		.z = 0.0f
-	};
 
 	return SDL_APP_CONTINUE;
 }
@@ -582,11 +597,16 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
 void SDL_AppQuit(void *appstate)
 {
 	// Shutdown
-	free(sector1.triangle);
-	if (ctx)
+	if (appstate)
 	{
-		glDeleteTextures(3, texture);
+		APPSTATE *state = (APPSTATE *)appstate;
+		free(state->sector1.triangle);
+		if (state->ctx)
+		{
+			glDeleteTextures(3, state->texture);
+		}
+		KillGLWindow(state);  // Kill The Window
+		free(state);
 	}
-	KillGLWindow();   // Kill The Window
 	SDL_Quit();
 }
