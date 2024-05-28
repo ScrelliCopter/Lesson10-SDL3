@@ -5,8 +5,11 @@ CMakeSettings.json
 
 out/
 build/
+winbuild/
 xcode/
 cmake-build-*/
 
 Thumbs.db
 .DS_Store
+*.exe
+*.dll
