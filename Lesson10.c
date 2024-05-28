@@ -15,7 +15,7 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_opengl.h>   // Header File For The OpenGL32 Library
 
-SDL_Window*   win = NULL;      // Holds Our Window Handle
+SDL_Window   *win = NULL;      // Holds Our Window Handle
 SDL_GLContext ctx = NULL;      // Permanent Rendering Context
 
 bool fullscreen = false;
@@ -63,7 +63,7 @@ typedef struct tagTRIANGLE
 typedef struct tagSECTOR
 {
 	int numtriangles;
-	TRIANGLE* triangle;
+	TRIANGLE *triangle;
 } SECTOR;
 
 // Our Model Goes Here:
@@ -397,17 +397,17 @@ bool CreateGLWindow(char *title, int width, int height, int bits, bool fullscree
 	return true;                                        // Success
 }
 
-int SDL_AppEvent(const SDL_Event *event)
+int SDL_AppEvent(void *appstate, const SDL_Event *event)
 {
 	switch (event->type)
 	{
 	case SDL_EVENT_QUIT:                                          // Have we received a quit event?
-		return 1;                                                 // Exit with success status
+		return SDL_APP_SUCCESS;                                   // Exit with success status
 
 	case SDL_EVENT_KEY_DOWN:
 		if (event->key.keysym.sym == SDLK_ESCAPE)                 // Quit on Escape
 		{
-			return 1;                                             // Exit with success status
+			return SDL_APP_SUCCESS;                               // Exit with success status
 		}
 		if (!event->key.repeat)                                   // Was a key just pressed?
 		{
@@ -425,7 +425,7 @@ int SDL_AppEvent(const SDL_Event *event)
 					glEnable(GL_BLEND);
 					glDisable(GL_DEPTH_TEST);
 				}
-				return 0;
+				break;
 
 			case SDLK_f:                                          // F = Cycle texture filtering
 				filter += 1;
@@ -433,40 +433,41 @@ int SDL_AppEvent(const SDL_Event *event)
 				{
 					filter = 0;
 				}
-				return 0;
+				break;
 
 			case SDLK_F1:                                         // F1 = Toggle Fullscreen / Windowed Mode
 				SDL_SetWindowFullscreen(win, !fullscreen);
-				return 0;
+				break;
 
-			default: return 0;
+			default: break;
 			}
 		}
-		return 0;
+		break;
 
 	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Deal with window resizes
 		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Backbuffer Width, data2=Backbuffer Height
-		return 0;
+		break;
 
 		case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
 			fullscreen = true;
-			return 0;
+			break;
 
 		case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
 			fullscreen = false;
-			return 0;
+			break;
 
-	default: return 0;
+	default: break;
 	}
+	return SDL_APP_CONTINUE;
 }
 
-int SDL_AppIterate(void)
+int SDL_AppIterate(void *appstate)
 {
 	DrawGLScene();           // Draw the scene
 	SDL_GL_SwapWindow(win);  // Swap buffers (Double buffering)
 
 	// Handle keyboard input
-	const Uint8* keys = SDL_GetKeyboardState(NULL);
+	const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
@@ -532,12 +533,15 @@ int SDL_AppIterate(void)
 		camera.lookupdown += 1.0f;
 	}
 
-	return 0;
+	return SDL_APP_CONTINUE;
 }
 
-int SDL_AppInit(int argc, char *argv[])
+int SDL_AppInit(void **appstate, int argc, char *argv[])
 {
-	SDL_Init(SDL_INIT_VIDEO);
+	if (SDL_Init(SDL_INIT_VIDEO) < 0)
+	{
+		return SDL_APP_FAILURE;
+	}
 
 	// Ask The User Which Screen Mode They Prefer
 	const SDL_MessageBoxData msgbox =
@@ -557,7 +561,7 @@ int SDL_AppInit(int argc, char *argv[])
 	const bool wantfullscreen = (bttnid == 0);
 	if (!CreateGLWindow("Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, wantfullscreen))
 	{
-		return -1;           // Quit If Window Was Not Created
+		return SDL_APP_FAILURE;  // Quit If Window Was Not Created
 	}
 
 	camera = (CAMERA)
@@ -572,10 +576,10 @@ int SDL_AppInit(int argc, char *argv[])
 		.z = 0.0f
 	};
 
-	return 0;
+	return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit()
+void SDL_AppQuit(void *appstate)
 {
 	// Shutdown
 	free(sector1.triangle);
