@@ -125,7 +125,7 @@ static void SetupWorld(APPSTATE *state)
 
 static bool FlipSurface(SDL_Surface *surface)
 {
-	if (!surface || SDL_LockSurface(surface) < 0)
+	if (!surface || !SDL_LockSurface(surface))
 	{
 		return false;
 	}
@@ -307,12 +307,12 @@ static void KillGLWindow(APPSTATE *state)
 	// Release and delete rendering context
 	if (state->ctx)
 	{
-		if (SDL_GL_MakeCurrent(state->win, NULL))
+		if (SDL_GL_MakeCurrent(state->win, NULL) == SDL_FALSE)
 		{
 			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
 		}
 
-		SDL_GL_DeleteContext(state->ctx);
+		SDL_GL_DestroyContext(state->ctx);
 		state->ctx = NULL;
 	}
 
@@ -341,7 +341,7 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 	// Try entering fullscreen mode if requested
 	if (fullscreenflag)
 	{
-		if (SDL_SetWindowFullscreen(state->win, SDL_TRUE) < 0)
+		if (!SDL_SetWindowFullscreen(state->win, SDL_TRUE))
 		{
 			// If mode switching fails, ask the user to quit or use to windowed mode
 			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe GL",
@@ -378,7 +378,7 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 		return false;
 	}
 
-	if (SDL_GL_MakeCurrent(state->win, state->ctx))        // Activate the rendering context
+	if (!SDL_GL_MakeCurrent(state->win, state->ctx))       // Activate the rendering context
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
 		return false;
@@ -397,7 +397,7 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 	return true;
 }
 
-int SDL_AppEvent(void *appstate, const SDL_Event *event)
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
 	APPSTATE *state = (APPSTATE *)appstate;
 	switch (event->type)
@@ -406,15 +406,15 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 		return SDL_APP_SUCCESS;
 
 	case SDL_EVENT_KEY_DOWN:
-		if (event->key.keysym.sym == SDLK_ESCAPE)                 // Quit on escape key
+		if (event->key.key == SDLK_ESCAPE)                        // Quit on escape key
 		{
 			return SDL_APP_SUCCESS;
 		}
 		if (!event->key.repeat)                                   // Was a key just pressed?
 		{
-			switch (event->key.keysym.sym)
+			switch (event->key.key)
 			{
-			case SDLK_b:                                          // B = Toggle blending
+			case SDLK_B:                                          // B = Toggle blending
 				state->blend = !state->blend;
 				if (!state->blend)
 				{
@@ -428,7 +428,7 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 				}
 				break;
 
-			case SDLK_f:                                          // F = Cycle texture filtering
+			case SDLK_F:                                          // F = Cycle texture filtering
 				state->filter += 1;
 				if (state->filter > 2)
 				{
@@ -462,14 +462,14 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 	return SDL_APP_CONTINUE;
 }
 
-int SDL_AppIterate(void *appstate)
+SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	APPSTATE *state = (APPSTATE *)appstate;
 	DrawGLScene(state);             // Draw the scene
 	SDL_GL_SwapWindow(state->win);  // Swap buffers (double buffering)
 
 	// Handle keyboard input
-	const Uint8 *keys = SDL_GetKeyboardState(NULL);
+	const SDL_bool *keys = SDL_GetKeyboardState(NULL);
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
@@ -538,9 +538,9 @@ int SDL_AppIterate(void *appstate)
 	return SDL_APP_CONTINUE;
 }
 
-int SDL_AppInit(void **appstate, int argc, char *argv[])
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
+	if (SDL_Init(SDL_INIT_VIDEO) == SDL_FALSE)
 	{
 		return SDL_APP_FAILURE;
 	}
