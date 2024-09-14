@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION "3.5" FATAL_ERROR)
+cmake_minimum_required(VERSION "3.15" FATAL_ERROR)
 project(Lesson10 LANGUAGES C)
 
 find_package(SDL3 REQUIRED CONFIG)
@@ -9,8 +9,8 @@ set_target_properties(Lesson10 PROPERTIES
 	C_STANDARD 99
 	WIN32_EXECUTABLE ON)
 target_link_libraries(Lesson10 SDL3::SDL3 OpenGL::GL)
-target_compile_options(Lesson10 PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -pedantic>)
-target_compile_definitions(Lesson10 PRIVATE $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
+target_compile_options(Lesson10 PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -pedantic>)
+target_compile_definitions(Lesson10 PRIVATE $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	get_property(SDL3_IMPORTED_LOCATION TARGET SDL3::SDL3 PROPERTY IMPORTED_LOCATION)
