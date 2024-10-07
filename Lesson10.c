@@ -99,7 +99,7 @@ static void SetupWorld(APPSTATE *state)
 	int numtriangles;
 	FILE *filein;
 	char oneline[255];
-	filein = fopen("data/world.txt", "r");  // File to load world data from
+	filein = fopen("Data/World.txt", "r");  // File to load world data from
 
 	readstr(filein, oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
