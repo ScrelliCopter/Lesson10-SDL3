@@ -300,14 +300,14 @@ static void KillGLWindow(APPSTATE *state)
 	// Restore windowed state & cursor visibility
 	if (state->fullscreen)
 	{
-		SDL_SetWindowFullscreen(state->win, SDL_FALSE);
+		SDL_SetWindowFullscreen(state->win, false);
 		SDL_ShowCursor();
 	}
 
 	// Release and delete rendering context
 	if (state->ctx)
 	{
-		if (SDL_GL_MakeCurrent(state->win, NULL) == SDL_FALSE)
+		if (!SDL_GL_MakeCurrent(state->win, NULL))
 		{
 			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
 		}
@@ -341,7 +341,7 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 	// Try entering fullscreen mode if requested
 	if (fullscreenflag)
 	{
-		if (!SDL_SetWindowFullscreen(state->win, SDL_TRUE))
+		if (!SDL_SetWindowFullscreen(state->win, true))
 		{
 			// If mode switching fails, ask the user to quit or use to windowed mode
 			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe GL",
@@ -469,7 +469,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	SDL_GL_SwapWindow(state->win);  // Swap buffers (double buffering)
 
 	// Handle keyboard input
-	const SDL_bool *keys = SDL_GetKeyboardState(NULL);
+	const bool *keys = SDL_GetKeyboardState(NULL);
 
 	if (keys[SDL_SCANCODE_PAGEUP])
 	{
@@ -540,7 +540,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
-	if (SDL_Init(SDL_INIT_VIDEO) == SDL_FALSE)
+	if (!SDL_Init(SDL_INIT_VIDEO))
 	{
 		return SDL_APP_FAILURE;
 	}
@@ -589,7 +589,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate)
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
 	if (appstate)
 	{
