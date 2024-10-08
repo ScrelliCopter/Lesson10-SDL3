@@ -75,6 +75,8 @@ typedef struct tagAPPSTATE
 	SDL_Window   *win;
 	SDL_GLContext ctx;
 
+	const char *resdir;
+
 	bool fullscreen, blend;
 
 	CAMERA camera;
@@ -83,6 +85,36 @@ typedef struct tagAPPSTATE
 
 	SECTOR sector1;
 } APPSTATE;
+
+static char * resourcePath(const APPSTATE *restrict state, const char *restrict name)
+{
+	if (!state || !name)
+	{
+		return NULL;
+	}
+	size_t resdirLen = strlen(state->resdir), nameLen = strlen(name);
+	char *path = malloc(resdirLen + nameLen + 1);
+	if (!path)
+	{
+		return NULL;
+	}
+	memcpy(path, state->resdir, resdirLen);
+	memcpy(&path[resdirLen], name, nameLen);
+	path[resdirLen + nameLen] = '\0';
+	return path;
+}
+
+static FILE * fopenResource(const APPSTATE *restrict state, const char *restrict name, const char* restrict mode)
+{
+	char *path = NULL;
+	if (!mode || !(path = resourcePath(state, name)))
+	{
+		return NULL;
+	}
+	FILE *f = fopen(path, mode);
+	free(path);
+	return f;
+}
 
 static void readstr(FILE *f, char *string)
 {
@@ -99,7 +131,7 @@ static void SetupWorld(APPSTATE *state)
 	int numtriangles;
 	FILE *filein;
 	char oneline[255];
-	filein = fopen("Data/World.txt", "r");  // File to load world data from
+	filein = fopenResource(state, "Data/World.txt", "r");  // File to load world data from
 
 	readstr(filein, oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
@@ -155,11 +187,17 @@ static bool FlipSurface(SDL_Surface *surface)
 
 static bool LoadGLTextures(APPSTATE *state)
 {
-	SDL_Surface *TextureImage = NULL;
-
 	// Load & flip the bitmap
-	if (!(TextureImage = SDL_LoadBMP("Data/Mud.bmp")) || !FlipSurface(TextureImage))
+	char *path = resourcePath(state, "Data/Mud.bmp");
+	if (!path)
 	{
+		return false;
+	}
+	SDL_Surface *TextureImage = SDL_LoadBMP(path);
+	free(path);
+	if (!TextureImage || !FlipSurface(TextureImage))
+	{
+		SDL_DestroySurface(TextureImage);
 		return false;
 	}
 
@@ -554,6 +592,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	{
 		.win = NULL,
 		.ctx = NULL,
+
+		.resdir = SDL_GetBasePath(),
 
 		.fullscreen = false,
 		.blend = false,  // Blending off
