@@ -224,7 +224,6 @@ static bool LoadGLTextures(APPSTATE *state)
 	return true;
 }
 
-typedef double mat4d[16];
 typedef float mat4f[16];
 typedef float mat3f[9];
 
@@ -234,13 +233,13 @@ typedef float mat3f[9];
 	0, 0, 1, 0, \
 	0, 0, 0, 1 }
 
-static void MakePerspective(mat4d m, double fovy, double aspect, double near, double far)
+static void MakePerspective(mat4f m, float fovy, float aspect, float near, float far)
 {
-	const double h = 1.0 / SDL_tan(fovy * (SDL_PI_D / 180.0) * 0.5);
-	const double w = h / aspect;
-	const double invcliprng = 1.0 / (far - near);
-	const double zh = -(far + near) * invcliprng;
-	const double zl = -(2.0 * far * near) * invcliprng;
+	const float h = 1.f / SDL_tanf(fovy * (SDL_PI_F / 180.f) * 0.5f);
+	const float w = h / aspect;
+	const float invcliprng = 1.f / (far - near);
+	const float zh = -(far + near) * invcliprng;
+	const float zl = -(2.f * far * near) * invcliprng;
 
 	/*
 	  [w  0  0  0]
@@ -248,12 +247,12 @@ static void MakePerspective(mat4d m, double fovy, double aspect, double near, do
 	  [0  0 zh zl]
 	  [0  0 -1  0]
 	*/
-	SDL_zerop(m);
-	m[0]  =  w;
-	m[5]  =  h;
-	m[10] = zh;
-	m[14] = zl;
-	m[11] = -1;
+	m[1] = m[2] = m[3] = m[4] = m[6] = m[7] = m[8] = m[9] = m[12] = m[13] = m[15] = 0.f;
+	m[0]  =    w;
+	m[5]  =    h;
+	m[10] =   zh;
+	m[14] =   zl;
+	m[11] = -1.f;
 }
 
 static void MakeRotation(mat3f m, float theta, float x, float y, float z)
@@ -337,9 +336,9 @@ static void ReSizeGLScene(int width, int height)
 	glMatrixMode(GL_PROJECTION);                        // Select the projection matrix
 
 	float aspect = (float)width / (float)height;        // Calculate aspect ratio
-	double mtx[16];
+	mat4f mtx;
 	MakePerspective(mtx, 45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
-	glLoadMatrixd(mtx);
+	glLoadMatrixf(mtx);
 
 	glMatrixMode(GL_MODELVIEW);                         // Select the modelview matrix
 }
