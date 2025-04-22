@@ -224,21 +224,102 @@ static bool LoadGLTextures(APPSTATE *state)
 	return true;
 }
 
-static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar)
+typedef double mat4d[16];
+typedef float mat4f[16];
+typedef float mat3f[9];
+
+#define M4_IDENTITY { \
+	1, 0, 0, 0, \
+	0, 1, 0, 0, \
+	0, 0, 1, 0, \
+	0, 0, 0, 1 }
+
+static void MakePerspective(mat4d m, double fovy, double aspect, double near, double far)
 {
-	double h = 1.0 / tan(fovy * (SDL_PI_D / 180.0) * 0.5);
-	double w = h / aspect;
-	double invcliprng = 1.0 / (zFar - zNear);
-	double z = -(zFar + zNear) * invcliprng;
-	double z2 = -(2.0 * zFar * zNear) * invcliprng;
-	GLdouble mtx[16] =
+	const double h = 1.0 / SDL_tan(fovy * (SDL_PI_D / 180.0) * 0.5);
+	const double w = h / aspect;
+	const double invcliprng = 1.0 / (far - near);
+	const double zh = -(far + near) * invcliprng;
+	const double zl = -(2.0 * far * near) * invcliprng;
+
+	/*
+	  [w  0  0  0]
+	  [0  h  0  0]
+	  [0  0 zh zl]
+	  [0  0 -1  0]
+	*/
+	SDL_zerop(m);
+	m[0]  =  w;
+	m[5]  =  h;
+	m[10] = zh;
+	m[14] = zl;
+	m[11] = -1;
+}
+
+static void MakeRotation(mat3f m, float theta, float x, float y, float z)
+{
+	const float c = SDL_cosf(theta), s = SDL_sinf(theta);
+	const float rc = 1.f - c;
+	const float rcx = x * rc, rcy = y * rc, rcz = z * rc;
+	const float sx = x * s, sy = y * s, sz = z * s;
+
+	m[0] = rcx * x + c;
+	m[3] = rcx * y - sz;
+	m[6] = rcx * z + sy;
+
+	m[1] = rcy * x + sz;
+	m[4] = rcy * y + c;
+	m[7] = rcy * z - sx;
+
+	m[2] = rcz * x - sy;
+	m[5] = rcz * y + sx;
+	m[8] = rcz * z + c;
+}
+
+static void Rotate(mat4f m, float angle, float x, float y, float z)
+{
+	// Treat inputs like glRotatef
+	const float theta = angle * SDL_PI_F / 180.f;
+	const float axismag = SDL_sqrtf(x * x + y * y + z * z);
+	if (SDL_fabsf(axismag - 1.f) > SDL_FLT_EPSILON)
 	{
-		w,   0.0, 0.0, 0.0,
-		0.0, h,   0.0, 0.0,
-		0.0, 0.0, z,  -1.0,
-		0.0, 0.0, z2,  0.0
-	};
-	glLoadMatrixd(mtx);
+		x /= axismag;
+		y /= axismag;
+		z /= axismag;
+	}
+
+	// Set up temporaries
+	float tmp[12], r[9];
+	SDL_memcpy(tmp, m, sizeof(float) * 12);
+	MakeRotation(r, theta, x, y, z);
+
+	// Partial matrix multiplication
+	m[0]  = r[0] * tmp[0] + r[1] * tmp[4] + r[2] * tmp[8];
+	m[1]  = r[0] * tmp[1] + r[1] * tmp[5] + r[2] * tmp[9];
+	m[2]  = r[0] * tmp[2] + r[1] * tmp[6] + r[2] * tmp[10];
+	m[3]  = r[0] * tmp[3] + r[1] * tmp[7] + r[2] * tmp[11];
+	m[4]  = r[3] * tmp[0] + r[4] * tmp[4] + r[5] * tmp[8];
+	m[5]  = r[3] * tmp[1] + r[4] * tmp[5] + r[5] * tmp[9];
+	m[6]  = r[3] * tmp[2] + r[4] * tmp[6] + r[5] * tmp[10];
+	m[7]  = r[3] * tmp[3] + r[4] * tmp[7] + r[5] * tmp[11];
+	m[8]  = r[6] * tmp[0] + r[7] * tmp[4] + r[8] * tmp[8];
+	m[9]  = r[6] * tmp[1] + r[7] * tmp[5] + r[8] * tmp[9];
+	m[10] = r[6] * tmp[2] + r[7] * tmp[6] + r[8] * tmp[10];
+	m[11] = r[6] * tmp[3] + r[7] * tmp[7] + r[8] * tmp[11];
+}
+
+static void Translate(float m[16], float x, float y, float z)
+{
+	/*
+	  m = { [1 0 0 x]
+	        [0 1 0 y]
+	        [0 0 1 z]
+	        [0 0 0 1] } * m
+	*/
+	m[12] += x * m[0] + y * m[4] + z * m[8];
+	m[13] += x * m[1] + y * m[5] + z * m[9];
+	m[14] += x * m[2] + y * m[6] + z * m[10];
+	m[15] += x * m[3] + y * m[7] + z * m[11];
 }
 
 /*  Set viewport size and setup matrices         *
@@ -246,21 +327,21 @@ static void gluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdou
  *  height  - Height of the OpenGL framebuffer   */
 static void ReSizeGLScene(int width, int height)
 {
-	if (height == 0)                              // Prevent division-by-zero by ensuring height is non-zero
+	if (height == 0)                                    // Prevent division-by-zero by ensuring height is non-zero
 	{
 		height = 1;
 	}
 
-	glViewport(0, 0, width, height);              // Reset the current viewport
+	glViewport(0, 0, width, height);                    // Reset the current viewport
 
-	glMatrixMode(GL_PROJECTION);                  // Select & reset the projection matrix
-	glLoadIdentity();
+	glMatrixMode(GL_PROJECTION);                        // Select the projection matrix
 
-	float aspect = (float)width / (float)height;  // Calculate aspect ratio
-	gluPerspective(45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
+	float aspect = (float)width / (float)height;        // Calculate aspect ratio
+	double mtx[16];
+	MakePerspective(mtx, 45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
+	glLoadMatrixd(mtx);
 
-	glMatrixMode(GL_MODELVIEW);                   // Select & reset the modelview matrix
-	glLoadIdentity();
+	glMatrixMode(GL_MODELVIEW);                         // Select the modelview matrix
 }
 
 static bool InitGL(APPSTATE *state)
@@ -287,7 +368,6 @@ static bool InitGL(APPSTATE *state)
 static void DrawGLScene(APPSTATE *state)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear the color and depth buffers
-	glLoadIdentity();                                    // Reset modelview
 
 	GLfloat x_m, y_m, z_m, u_m, v_m;
 	GLfloat xtrans = -state->camera.xpos;
@@ -297,10 +377,12 @@ static void DrawGLScene(APPSTATE *state)
 
 	int numtriangles;
 
-	glRotatef(state->camera.lookupdown, 1.0f, 0.0f, 0.0f);
-	glRotatef(sceneroty, 0.0f, 1.0f, 0.0f);
+	mat4f modelview = M4_IDENTITY;
+	Rotate(modelview, state->camera.lookupdown, 1.0f, 0.0f, 0.0f);
+	Rotate(modelview, sceneroty, 0.0f, 1.0f, 0.0f);
+	Translate(modelview, xtrans, ytrans, ztrans);
+	glLoadMatrixf(modelview);
 
-	glTranslatef(xtrans, ytrans, ztrans);
 	glBindTexture(GL_TEXTURE_2D, state->texture[state->filter]);
 
 	numtriangles = state->sector1.numtriangles;
