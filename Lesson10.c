@@ -7,13 +7,13 @@
  */
 
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
-#include <SDL3/SDL_opengl.h>
 
 #define BTTN_YES 0
 #define BTTN_NO  1
@@ -70,18 +70,27 @@ typedef struct tagSECTOR
 	TRIANGLE *triangle;
 } SECTOR;
 
+typedef float mat4f[16];
+typedef float mat3f[9];
+
 typedef struct tagAPPSTATE
 {
-	SDL_Window   *win;
-	SDL_GLContext ctx;
+	SDL_Window              *win;
+	SDL_GPUDevice           *dev;
+	SDL_GPUGraphicsPipeline *pso, *psoblend;
 
 	const char *resdir;
 
 	bool fullscreen, blend;
 
+	mat4f projmtx;               // Projection matrix
 	CAMERA camera;
-	unsigned filter;    // Filtered texture selection
-	GLuint texture[3];  // Filtered textures
+	unsigned filter;             // Filtered texture selection
+	unsigned depthtexw, depthtexh; // Width and height for the depth texture
+	SDL_GPUTexture *depthtex;    // Texture used for depth testing
+	SDL_GPUTexture *texture;     // World texture
+	SDL_GPUSampler *samplers[3]; // Filtered samplers
+	SDL_GPUBuffer *worldmesh;    // GPU world mesh
 
 	SECTOR sector1;
 } APPSTATE;
@@ -155,6 +164,90 @@ static void SetupWorld(APPSTATE *state)
 	return;
 }
 
+static SDL_GPUBuffer * CreateStaticMesh(APPSTATE *state, const VERTEX *vertices, size_t numvertices)
+{
+	const Uint32 bufsize = sizeof(VERTEX) * (Uint32)numvertices;
+
+	// Create vertex data buffer
+	const SDL_GPUBufferCreateInfo bufinfo =
+	{
+		.usage = SDL_GPU_BUFFERUSAGE_INDEX,
+		.size = bufsize,
+		.props = 0
+	};
+	SDL_GPUBuffer *buf = SDL_CreateGPUBuffer(state->dev, &bufinfo);
+	if (!buf)
+	{
+		return NULL;
+	}
+
+	// Create transfer buffer
+	const SDL_GPUTransferBufferCreateInfo xferinfo =
+	{
+		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+		.size = bufsize,
+		.props = 0
+	};
+	SDL_GPUTransferBuffer *xferbuf = SDL_CreateGPUTransferBuffer(state->dev, &xferinfo);
+	if (!xferbuf)
+	{
+		SDL_ReleaseGPUBuffer(state->dev, buf);
+		return NULL;
+	}
+
+	// Map transfer buffer and copy the vertex data
+	void *map = SDL_MapGPUTransferBuffer(state->dev, xferbuf, false);
+	if (!map)
+	{
+		SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
+		SDL_ReleaseGPUBuffer(state->dev, buf);
+		return NULL;
+	}
+	SDL_memcpy(map, (const void *)vertices, (size_t)bufsize);
+	SDL_UnmapGPUTransferBuffer(state->dev, xferbuf);
+
+	// Upload the vertex data into the GPU buffer
+	SDL_GPUCommandBuffer *cmdbuf = SDL_AcquireGPUCommandBuffer(state->dev);
+	if (!cmdbuf)
+	{
+		SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
+		SDL_ReleaseGPUBuffer(state->dev, buf);
+		return NULL;
+	}
+	SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(cmdbuf);
+	const SDL_GPUTransferBufferLocation source = { .transfer_buffer = xferbuf, .offset = 0 };
+	const SDL_GPUBufferRegion dest = { .buffer = buf, .offset = 0, .size = bufsize };
+	SDL_UploadToGPUBuffer(pass, &source, &dest, false);
+	SDL_EndGPUCopyPass(pass);
+	SDL_SubmitGPUCommandBuffer(cmdbuf);
+	SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
+
+	return buf;
+}
+
+static bool CreateWorldMesh(APPSTATE *state)
+{
+	const int numtriangles = state->sector1.numtriangles;
+	const size_t numvertices = 3 * (size_t)numtriangles;
+
+	VERTEX *vertices = SDL_malloc(sizeof(VERTEX) * numvertices);
+	if (!vertices)
+	{
+		return false;
+	}
+
+	size_t index = 0;
+	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
+	{
+		vertices[index++] = state->sector1.triangle[loop_m].vertex[0];
+		vertices[index++] = state->sector1.triangle[loop_m].vertex[1];
+		vertices[index++] = state->sector1.triangle[loop_m].vertex[2];
+	}
+	state->worldmesh = CreateStaticMesh(state, vertices, numvertices);
+	SDL_free(vertices);
+	return state->worldmesh != NULL;
+}
+
 static bool FlipSurface(SDL_Surface *surface)
 {
 	if (!surface || !SDL_LockSurface(surface))
@@ -185,10 +278,159 @@ static bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-static bool LoadGLTextures(APPSTATE *state)
+static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path, SDL_GPUShaderFormat format, bool isfragment)
+{
+	FILE *filein = fopenResource(state, path, "rb");
+	if (!filein)
+	{
+		return false;
+	}
+
+	// Read shader code into a buffer
+	long libsize; Uint8 *libdata;
+	fseek(filein, 0, SEEK_END);
+	if ((libsize = ftell(filein)) <= 0 ||
+		!(libdata = SDL_malloc((size_t)libsize)))
+	{
+		fclose(filein);
+		return NULL;
+	}
+	fseek(filein, 0, SEEK_SET);
+	fread((void *)libdata, 1, libsize, filein);
+
+	// Create shader object
+	const SDL_GPUShaderCreateInfo desc =
+	{
+		.num_samplers = isfragment ? 1 : 0,
+		.num_storage_textures = 0,
+		.num_storage_buffers = 0,
+		.num_uniform_buffers = isfragment ? 0 : 1,
+		.format = format,
+		.entrypoint = isfragment ? "FragmentMain" : "VertexMain",
+		.code = libdata,
+		.code_size = (size_t)libsize,
+		.stage = isfragment ? SDL_GPU_SHADERSTAGE_FRAGMENT : SDL_GPU_SHADERSTAGE_VERTEX
+	};
+	SDL_GPUShader *shader = SDL_CreateGPUShader(state->dev, &desc);
+
+	SDL_free(libdata);
+	fclose(filein);
+	return shader;
+}
+
+static bool LoadShaders(APPSTATE *state, SDL_GPUShader **vertexshader, SDL_GPUShader **fragmentshader)
+{
+	SDL_GPUShader *vtxshader = NULL, *frgshader = NULL;
+	const SDL_GPUShaderFormat format = SDL_GPU_SHADERFORMAT_MSL;
+	vtxshader = LoadShader(state, "Data/shader.vertex.metal", format, false);
+	frgshader = LoadShader(state, "Data/shader.fragment.metal", format, true);
+
+	if (!vtxshader || !frgshader)
+	{
+		if (vtxshader) SDL_ReleaseGPUShader(state->dev, vtxshader);
+		if (frgshader) SDL_ReleaseGPUShader(state->dev, frgshader);
+		return false;
+	}
+
+	*vertexshader = vtxshader;
+	*fragmentshader = frgshader;
+	return true;
+}
+
+static bool CreateDepthTexture(APPSTATE *state, unsigned width, unsigned height)
+{
+	if (state->depthtex)
+	{
+		SDL_ReleaseGPUTexture(state->dev, state->depthtex);
+		state->depthtex = NULL;
+	}
+
+	SDL_GPUTexture *newtex = SDL_CreateGPUTexture(state->dev, &(SDL_GPUTextureCreateInfo)
+	{
+		.type = SDL_GPU_TEXTURETYPE_2D,
+		.format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+		.width = width,
+		.height = height,
+		.layer_count_or_depth = 1,
+		.num_levels = 1,
+		.sample_count = SDL_GPU_SAMPLECOUNT_1,
+		.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+		.props = 0
+	});
+	if (!newtex)
+	{
+		return false;
+	}
+
+	SDL_SetGPUTextureName(state->dev, newtex, "Depth Texture");
+	state->depthtex  = newtex;
+	state->depthtexw = width;
+	state->depthtexh = height;
+	return true;
+}
+
+static SDL_GPUTexture * CreateTextureFromSurface(APPSTATE *state, const SDL_Surface *image)
+{
+	const int width = image->w, height = image->h, depth = 1;
+	const Uint32 datasize = 4 * width * height;
+
+	// Convert the input surface into RGBA
+	void *converted = SDL_malloc((size_t)datasize);
+	if (!SDL_ConvertPixels(width, height,
+		image->format, image->pixels, image->pitch,
+		SDL_PIXELFORMAT_ABGR8888, converted, 4 * width))
+	{
+		SDL_free(converted);
+		return NULL;
+	}
+
+	const SDL_GPUTextureCreateInfo info =
+	{
+		.type = SDL_GPU_TEXTURETYPE_2D,
+		.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+		.width = image->w,
+		.height = image->h,
+		.layer_count_or_depth = 1,
+		.num_levels = 1,
+		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+	};
+	SDL_GPUTexture *texture = SDL_CreateGPUTexture(state->dev, &info);
+
+	// Create and copy image data to a transfer buffer
+	SDL_GPUTransferBuffer *xferbuf = SDL_CreateGPUTransferBuffer(state->dev, &(SDL_GPUTransferBufferCreateInfo)
+	{
+		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+		.size = datasize
+	});
+	void *map = SDL_MapGPUTransferBuffer(state->dev, xferbuf, false);
+	SDL_memcpy(map, converted, (size_t)datasize);
+	SDL_UnmapGPUTransferBuffer(state->dev, xferbuf);
+
+	// Upload the transfer data to the GPU resources
+	SDL_GPUCommandBuffer *cmdbuf = SDL_AcquireGPUCommandBuffer(state->dev);
+	SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(cmdbuf);
+	const SDL_GPUTextureTransferInfo source = { .transfer_buffer = xferbuf, .offset = 0 };
+	const SDL_GPUTextureRegion dest =
+	{
+		.texture = texture,
+		.w = width,
+		.h = height,
+		.d = depth
+	};
+	SDL_UploadToGPUTexture(pass, &source, &dest, false);
+	SDL_EndGPUCopyPass(pass);
+	SDL_SubmitGPUCommandBuffer(cmdbuf);
+	SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
+	SDL_free(converted);
+
+	return texture;
+}
+
+static bool LoadTexture(APPSTATE *state)
 {
 	// Load & flip the bitmap
-	char *path = resourcePath(state, "Data/Mud.bmp");
+	const char *resname = "Data/Mud.bmp";
+	char *path = resourcePath(state, resname);
 	if (!path)
 	{
 		return false;
@@ -201,37 +443,76 @@ static bool LoadGLTextures(APPSTATE *state)
 		return false;
 	}
 
-	glGenTextures(3, &state->texture[0]);                        // Create three textures
-	GLint params[3][3] =
-	{
-		[0] = { GL_NEAREST, GL_NEAREST, GL_FALSE },              // Nearest filtered
-		[1] = { GL_LINEAR, GL_LINEAR, GL_FALSE },                // Linear filtered
-		[2] = { GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, GL_TRUE },  // MipMapped
-	};
-	for (int i = 0; i < 3; i++)
-	{
-		glBindTexture(GL_TEXTURE_2D, state->texture[i]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, params[i][0]);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, params[i][1]);
-		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, params[i][2]);
-		glTexImage2D(GL_TEXTURE_2D,
-			0, 3, TextureImage->w, TextureImage->h,
-			0, GL_BGR, GL_UNSIGNED_BYTE, TextureImage->pixels);
-	}
+	// Create texture
+	state->texture = CreateTextureFromSurface(state, TextureImage);
+	SDL_SetGPUTextureName(state->dev, state->texture, resname);
 
 	// Free temporary surface
 	SDL_DestroySurface(TextureImage);
-	return true;
+
+	return state->texture != NULL;
 }
 
-typedef float mat4f[16];
-typedef float mat3f[9];
+static bool CreateGPUSamplers(APPSTATE *state)
+{
+	const SDL_GPUSamplerCreateInfo params[3] =
+	{
+		[0] =  // Nearest filtered
+		{
+			.min_filter = SDL_GPU_FILTER_NEAREST,
+			.mag_filter = SDL_GPU_FILTER_NEAREST,
+			.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+		},
+		[1] =  // Linear filtered
+		{
+			.min_filter = SDL_GPU_FILTER_LINEAR,
+			.mag_filter = SDL_GPU_FILTER_LINEAR,
+			.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+		},
+		[2] =  // MipMapped
+		{
+			.min_filter = SDL_GPU_FILTER_LINEAR,
+			.mag_filter = SDL_GPU_FILTER_LINEAR,
+			.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+		}
+	};
+
+	for (unsigned i = 0; i < SDL_arraysize(state->samplers); ++i)
+	{
+		SDL_GPUSamplerCreateInfo info = params[i];
+		info.address_mode_u = info.address_mode_v = info.address_mode_w
+			= SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+		if (!(state->samplers[i] = SDL_CreateGPUSampler(state->dev, &info)))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
 
 #define M4_IDENTITY { \
 	1, 0, 0, 0, \
 	0, 1, 0, 0, \
 	0, 0, 1, 0, \
 	0, 0, 0, 1 }
+
+static void MulMatrices(mat4f mtx, mat4f lhs, mat4f rhs)
+{
+	int i = 0;
+	for (int col = 0; col < 4; ++col)
+	{
+		for (int row = 0; row < 4; ++row)
+		{
+			float a = 0.f;
+			for (int j = 0; j < 4; ++j)
+			{
+				a += lhs[j * 4 + row] * rhs[col * 4 + j];
+			}
+			mtx[i++] = a;
+		}
+	}
+}
 
 static void MakePerspective(mat4f m, float fovy, float aspect, float near, float far)
 {
@@ -321,100 +602,206 @@ static void Translate(float m[16], float x, float y, float z)
 	m[15] += x * m[3] + y * m[7] + z * m[11];
 }
 
-/*  Set viewport size and setup matrices         *
- *  width   - Width of the OpenGL framebuffer    *
- *  height  - Height of the OpenGL framebuffer   */
-static void ReSizeGLScene(int width, int height)
+/*  Recalculate projection matrix         *
+ *  width   - Width of the framebuffer    *
+ *  height  - Height of the framebuffer   */
+static void ReSizeScene(APPSTATE *state, int width, int height)
 {
 	if (height == 0)                                    // Prevent division-by-zero by ensuring height is non-zero
 	{
 		height = 1;
 	}
 
-	glViewport(0, 0, width, height);                    // Reset the current viewport
-
-	glMatrixMode(GL_PROJECTION);                        // Select the projection matrix
-
 	float aspect = (float)width / (float)height;        // Calculate aspect ratio
-	mat4f mtx;
-	MakePerspective(mtx, 45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
-	glLoadMatrixf(mtx);
-
-	glMatrixMode(GL_MODELVIEW);                         // Select the modelview matrix
+	MakePerspective(state->projmtx, 45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
 }
 
-static bool InitGL(APPSTATE *state)
+static SDL_GPUGraphicsPipeline *MakePipeline(APPSTATE *state, SDL_GPUShader *vtxshader, SDL_GPUShader *frgshader, bool blend)
 {
-	if (!LoadGLTextures(state))                         // Load textures
+	const SDL_GPUColorTargetBlendState blendstate =
+	{
+		.enable_blend = true,
+		.color_blend_op = SDL_GPU_BLENDOP_ADD,
+		.alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+		.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+		.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+		.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+		.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE
+	};
+	const SDL_GPUColorTargetBlendState noblend = { .enable_blend = false };
+
+	const SDL_GPUVertexAttribute vtxattribs[2] =
+	{
+		{
+			.location = 0,
+			.buffer_slot = 0,
+			.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+			.offset = offsetof(VERTEX, x)
+		},
+		{
+			.location = 1,
+			.buffer_slot = 0,
+			.format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+			.offset = offsetof(VERTEX, u)
+		}
+	};
+
+	const bool hasdepthtest = blend ? false : true;
+
+	const SDL_GPUGraphicsPipelineCreateInfo info =
+	{
+		.vertex_shader = vtxshader,
+		.fragment_shader = frgshader,
+		.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+		.vertex_input_state =
+		{
+			.num_vertex_buffers = 1,
+			.vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription)
+			{
+				.slot = 0,
+				.pitch = sizeof(VERTEX),
+				.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX
+			},
+			.num_vertex_attributes = SDL_arraysize(vtxattribs),
+			.vertex_attributes = vtxattribs
+		},
+		.rasterizer_state =
+		{
+			.fill_mode = SDL_GPU_FILLMODE_FILL,
+			.cull_mode = SDL_GPU_CULLMODE_NONE,
+			.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE  // Right-handed coordinates
+		},
+		.depth_stencil_state =
+		{
+			.compare_op = SDL_GPU_COMPAREOP_LESS,  // Pass if pixel depth value tests less than the depth buffer value
+			.enable_depth_test = hasdepthtest,             // Enable depth testing
+			.enable_depth_write = hasdepthtest
+		},
+		.target_info =
+		{
+			.num_color_targets = 1,
+			.color_target_descriptions = &(SDL_GPUColorTargetDescription)
+			{
+				.format = SDL_GetGPUSwapchainTextureFormat(state->dev, state->win),
+				.blend_state = blend ? blendstate : noblend  // Set the blending function for translucency
+			},
+			.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+			.has_depth_stencil_target = true
+		}
+	};
+	return SDL_CreateGPUGraphicsPipeline(state->dev, &info);
+}
+
+static bool InitGPU(APPSTATE *state)
+{
+	if (!LoadTexture(state))                          // Load texture
+	{
+		return false;
+	}
+	if (!CreateGPUSamplers(state))                    // Create texture samplers
+	{
+		return false;
+	}
+	SDL_GPUShader *vtxshader, *frgshader;
+	if (!LoadShaders(state, &vtxshader, &frgshader))  // Load shaders
 	{
 		return false;
 	}
 
-	glEnable(GL_TEXTURE_2D);                            // Enable texture mapping
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE);                  // Set the blending function for translucency
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);               // Set the background clear color to black
-	glClearDepth(1.0);                                  // Ensure depth buffer clears to furthest value
-	glDepthFunc(GL_LESS);                               // Pass if pixel depth value tests less than the depth buffer value
-	glEnable(GL_DEPTH_TEST);                            // Enable depth testing
-	glShadeModel(GL_SMOOTH);                            // Enable Smooth color shading
-	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Request the implementation to use perspective correct interpolation
+	state->pso = MakePipeline(state, vtxshader, frgshader, false);
+	state->psoblend = MakePipeline(state, vtxshader, frgshader, true);
+	SDL_ReleaseGPUShader(state->dev, frgshader);
+	SDL_ReleaseGPUShader(state->dev, vtxshader);
+	if (!state->pso || !state->psoblend)
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateGPUGraphicsPipeline(): %s", SDL_GetError());
+		return false;
+	}
+
+	unsigned backbufw, backbufh;
+	SDL_GetWindowSizeInPixels(state->win, (int *)&backbufw, (int *)&backbufh);
+	if (!CreateDepthTexture(state, backbufw, backbufh))
+	{
+		return false;
+	}
 
 	SetupWorld(state);
+	if (!CreateWorldMesh(state))
+	{
+		return false;
+	}
 
 	return true;
 }
 
-static void DrawGLScene(APPSTATE *state)
+static void DrawScene(APPSTATE *state)
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Clear the color and depth buffers
+	SDL_GPUCommandBuffer* cmdbuf = SDL_AcquireGPUCommandBuffer(state->dev);
 
-	GLfloat x_m, y_m, z_m, u_m, v_m;
-	GLfloat xtrans = -state->camera.xpos;
-	GLfloat ztrans = -state->camera.zpos;
-	GLfloat ytrans = -state->camera.walkbias - 0.25f;
-	GLfloat sceneroty = 360.0f - state->camera.yrot;
+	SDL_GPUTexture* backbuftex = NULL;
+	Uint32 backbufw, backbufh;
+	SDL_AcquireGPUSwapchainTexture(cmdbuf, state->win, &backbuftex, &backbufw, &backbufh);
 
-	int numtriangles;
+	if (!backbuftex)
+	{
+		SDL_CancelGPUCommandBuffer(cmdbuf);
+		return;
+	}
+
+	float xtrans = -state->camera.xpos;
+	float ztrans = -state->camera.zpos;
+	float ytrans = -state->camera.walkbias - 0.25f;
+	float sceneroty = 360.0f - state->camera.yrot;
 
 	mat4f modelview = M4_IDENTITY;
 	Rotate(modelview, state->camera.lookupdown, 1.0f, 0.0f, 0.0f);
 	Rotate(modelview, sceneroty, 0.0f, 1.0f, 0.0f);
 	Translate(modelview, xtrans, ytrans, ztrans);
-	glLoadMatrixf(modelview);
 
-	glBindTexture(GL_TEXTURE_2D, state->texture[state->filter]);
+	mat4f viewproj;
+	MulMatrices(viewproj, state->projmtx, modelview);
+	SDL_PushGPUVertexUniformData(cmdbuf, 0, &viewproj, sizeof(mat4f));
 
-	numtriangles = state->sector1.numtriangles;
-
-	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
+	if (!state->depthtex || state->depthtexw != backbufw || state->depthtexh != backbufh)
 	{
-		glBegin(GL_TRIANGLES);
-			glNormal3f(0.0f, 0.0f, 1.0f);
-			x_m = state->sector1.triangle[loop_m].vertex[0].x;
-			y_m = state->sector1.triangle[loop_m].vertex[0].y;
-			z_m = state->sector1.triangle[loop_m].vertex[0].z;
-			u_m = state->sector1.triangle[loop_m].vertex[0].u;
-			v_m = state->sector1.triangle[loop_m].vertex[0].v;
-			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
-
-			x_m = state->sector1.triangle[loop_m].vertex[1].x;
-			y_m = state->sector1.triangle[loop_m].vertex[1].y;
-			z_m = state->sector1.triangle[loop_m].vertex[1].z;
-			u_m = state->sector1.triangle[loop_m].vertex[1].u;
-			v_m = state->sector1.triangle[loop_m].vertex[1].v;
-			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
-
-			x_m = state->sector1.triangle[loop_m].vertex[2].x;
-			y_m = state->sector1.triangle[loop_m].vertex[2].y;
-			z_m = state->sector1.triangle[loop_m].vertex[2].z;
-			u_m = state->sector1.triangle[loop_m].vertex[2].u;
-			v_m = state->sector1.triangle[loop_m].vertex[2].v;
-			glTexCoord2f(u_m, v_m); glVertex3f(x_m, y_m, z_m);
-		glEnd();
+		CreateDepthTexture(state, backbufw, backbufh);
 	}
+
+	SDL_GPUColorTargetInfo colorinfo;
+	SDL_zero(colorinfo);
+	colorinfo.texture = backbuftex;
+	colorinfo.clear_color = (SDL_FColor){ 0.0f, 0.0f, 0.0f, 0.0f };  // Set the background clear color to black
+	colorinfo.load_op = SDL_GPU_LOADOP_CLEAR;
+	colorinfo.store_op = SDL_GPU_STOREOP_STORE;
+
+	SDL_GPUDepthStencilTargetInfo depthinfo;
+	SDL_zero(depthinfo);
+	depthinfo.texture = state->depthtex;
+	depthinfo.clear_depth = 1.0f;  // Ensure depth buffer clears to furthest value
+	depthinfo.load_op = SDL_GPU_LOADOP_CLEAR;
+	depthinfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
+	depthinfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+	depthinfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+	depthinfo.cycle = true;
+
+	// Draw world
+	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmdbuf, &colorinfo, 1, &depthinfo);
+	SDL_BindGPUGraphicsPipeline(pass, state->blend ? state->psoblend : state->pso);
+	SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+			.texture = state->texture,
+			.sampler = state->samplers[state->filter]
+		}, 1);
+	Uint32 numvertices = 3u * state->sector1.numtriangles;
+	SDL_BindGPUVertexBuffers(pass, 0, &(SDL_GPUBufferBinding){
+			.buffer = state->worldmesh, .offset = 0
+		}, 1);
+	SDL_DrawGPUPrimitives(pass, numvertices, 1, 0, 0);
+
+	SDL_EndGPURenderPass(pass);
+	SDL_SubmitGPUCommandBuffer(cmdbuf);
 }
 
-static void KillGLWindow(APPSTATE *state)
+static void KillGPUWindow(APPSTATE *state)
 {
 	// Restore windowed state & cursor visibility
 	if (state->fullscreen)
@@ -424,15 +811,11 @@ static void KillGLWindow(APPSTATE *state)
 	}
 
 	// Release and delete rendering context
-	if (state->ctx)
+	if (state->dev)
 	{
-		if (!SDL_GL_MakeCurrent(state->win, NULL))
-		{
-			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "SHUTDOWN ERROR", "Release Of RC Failed.", NULL);
-		}
-
-		SDL_GL_DestroyContext(state->ctx);
-		state->ctx = NULL;
+		SDL_ReleaseWindowFromGPUDevice(state->dev, state->win);
+		SDL_DestroyGPUDevice(state->dev);
+		state->dev = NULL;
 	}
 
 	SDL_DestroyWindow(state->win);
@@ -440,18 +823,17 @@ static void KillGLWindow(APPSTATE *state)
 }
 
 
-/*  This code creates our OpenGL window, parameters are:                    *
+/*  This code creates our SDL window, parameters are:                       *
  *  title           - Title to appear at the top of the window              *
- *  width           - Width of the OpenGL window or fullscreen mode         *
- *  height          - Height of the OpenGL window or fullscreen mode        *
- *  bits            - Number of bits to use for color (8/16/24/32)          *
+ *  width           - Width of the SDL window or fullscreen mode            *
+ *  height          - Height of the SDL window or fullscreen mode           *
  *  fullscreenflag  - Use fullscreen mode (true) Or windowed mode (false)   */
-static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, int bits, bool fullscreenflag)
+static bool CreateGPUWindow(APPSTATE *state, char *title, int width, int height, bool fullscreenflag)
 {
 	state->fullscreen = fullscreenflag;
 
 	if (!(state->win = SDL_CreateWindow(title, width, height,
-		SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
+		SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY)))
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Window Creation Error.", NULL);
 		return false;
@@ -463,7 +845,7 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 		if (!SDL_SetWindowFullscreen(state->win, true))
 		{
 			// If mode switching fails, ask the user to quit or use to windowed mode
-			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe GL",
+			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe SDL_GPU",
 				"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?");
 			if (bttnid == BTTN_NO)
 			{
@@ -475,39 +857,23 @@ static bool CreateGLWindow(APPSTATE *state, char *title, int width, int height, 
 		}
 	}
 
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);           // Double buffered framebuffer
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 0);               // Color bits ignored
-	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);             // No alpha buffer
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 0);       // No accumulation buffer
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE, 0);         // Accumulation bits ignored
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_GREEN_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_ACCUM_BLUE_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);            // 16-bit Z-buffer (depth buffer)
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);           // No stencil buffer
-
-
-	if (!(state->ctx = SDL_GL_CreateContext(state->win)))  // Create rendering context
+	if (!(state->dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, true, NULL)))  // Create rendering device
 	{
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GL Rendering Context.", NULL);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GPU Rendering Context.", NULL);
 		return false;
 	}
 
-	if (!SDL_GL_MakeCurrent(state->win, state->ctx))       // Activate the rendering context
+	if (!SDL_ClaimWindowForGPUDevice(state->dev, state->win))  // Attach GPU device to window
 	{
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GL Rendering Context.", NULL);
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Activate The GPU Rendering Context.", NULL);
 		return false;
 	}
 
 	SDL_ShowWindow(state->win);
-	SDL_GL_SetSwapInterval(1);                             // Enable VSync
-	ReSizeGLScene(width, height);                          // Set up our viewport and perspective
+	SDL_SetGPUSwapchainParameters(state->dev, state->win, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);  // Enable VSync
+	ReSizeScene(state, width, height);                   // Set up our viewport and perspective
 
-	if (!InitGL(state))                                    // Initialize the scene
+	if (!InitGPU(state))                                    // Initialize the scene
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Initialization Failed.", NULL);
 		return false;
@@ -535,16 +901,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 			{
 			case SDLK_B:                                          // B = Toggle blending
 				state->blend = !state->blend;
-				if (!state->blend)
-				{
-					glDisable(GL_BLEND);
-					glEnable(GL_DEPTH_TEST);
-				}
-				else
-				{
-					glEnable(GL_BLEND);
-					glDisable(GL_DEPTH_TEST);
-				}
 				break;
 
 			case SDLK_F:                                          // F = Cycle texture filtering
@@ -565,16 +921,16 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 		break;
 
 	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:                     // Deal with window resizes
-		ReSizeGLScene(event->window.data1, event->window.data2);  // data1=Backbuffer Width, data2=Backbuffer Height
+		ReSizeScene(state, event->window.data1, event->window.data2);  // data1=Backbuffer Width, data2=Backbuffer Height
 		break;
 
-		case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
-			state->fullscreen = true;
-			break;
+	case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+		state->fullscreen = true;
+		break;
 
-		case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
-			state->fullscreen = false;
-			break;
+	case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+		state->fullscreen = false;
+		break;
 
 	default: break;
 	}
@@ -584,8 +940,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	APPSTATE *state = (APPSTATE *)appstate;
-	DrawGLScene(state);             // Draw the scene
-	SDL_GL_SwapWindow(state->win);  // Swap buffers (double buffering)
+	DrawScene(state);             // Draw the scene
 
 	// Handle keyboard input
 	const bool *keys = SDL_GetKeyboardState(NULL);
@@ -672,13 +1027,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	*state = (APPSTATE)
 	{
 		.win = NULL,
-		.ctx = NULL,
+		.dev = NULL,
+		.pso = NULL,
 
 		.resdir = SDL_GetBasePath(),
 
 		.fullscreen = false,
 		.blend = false,  // Blending off
 
+		.projmtx = M4_IDENTITY,
 		.camera = (CAMERA)
 		{
 			.heading = 0.0f,
@@ -692,7 +1049,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 		},
 
 		.filter = 0,
-		.texture = { 0, 0, 0 },
+		.depthtexw = 0,
+		.depthtexh = 0,
+		.depthtex = NULL,
+		.texture = NULL,
+		.samplers = { NULL, NULL, NULL },
+		.worldmesh = NULL,
 		.sector1 = (SECTOR){ .numtriangles = 0, .triangle = NULL }
 	};
 
@@ -700,9 +1062,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	int bttnid = ShowYesNoMessageBox(state->win, BTTN_NO, "Start FullScreen?",
 		"Would You Like To Run In Fullscreen Mode?");
 
-	// Create our OpenGL window
+	// Create our SDL window
 	const bool wantfullscreen = (bttnid == BTTN_YES);
-	if (!CreateGLWindow(state, "Lionel Brits & NeHe's 3D World Tutorial", 640, 480, 16, wantfullscreen))
+	if (!CreateGPUWindow(state, "Lionel Brits & NeHe's 3D World Tutorial", 640, 480, wantfullscreen))
 	{
 		return SDL_APP_FAILURE;
 	}
@@ -716,11 +1078,19 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 	{
 		APPSTATE *state = (APPSTATE *)appstate;
 		free(state->sector1.triangle);
-		if (state->ctx)
+		if (state->dev)
 		{
-			glDeleteTextures(3, state->texture);
+			SDL_ReleaseGPUBuffer(state->dev, state->worldmesh);
+			SDL_ReleaseGPUTexture(state->dev, state->depthtex);
+			for (int i = SDL_arraysize(state->samplers); --i > 0;)
+			{
+				SDL_ReleaseGPUSampler(state->dev, state->samplers[i]);
+			}
+			SDL_ReleaseGPUTexture(state->dev, state->texture);
+			SDL_ReleaseGPUGraphicsPipeline(state->dev, state->psoblend);
+			SDL_ReleaseGPUGraphicsPipeline(state->dev, state->pso);
 		}
-		KillGLWindow(state);
+		KillGPUWindow(state);
 		free(state);
 	}
 

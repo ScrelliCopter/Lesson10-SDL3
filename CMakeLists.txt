@@ -7,6 +7,8 @@ find_package(OpenGL REQUIRED)
 set(SOURCES Lesson10.c)
 
 set(DATA
+	Data/Shader.vertex.metal
+	Data/Shader.fragment.metal
 	Data/Mud.bmp
 	Data/World.txt)
 
