@@ -10,7 +10,7 @@ struct FragmentInput
 fragment half4 FragmentMain(
 	FragmentInput in [[stage_in]],
 	metal::texture2d<half, metal::access::sample> texture [[texture(0)]],
-	metal::sampler sampler [[sampler0]])
+	metal::sampler sampler [[sampler(0)]])
 {
 	return texture.sample(sampler, in.texcoord);
 }
