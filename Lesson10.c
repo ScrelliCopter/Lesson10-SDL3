@@ -8,8 +8,6 @@
 
 #include <math.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
 #include <float.h>
 #include <SDL3/SDL.h>
@@ -103,13 +101,13 @@ static char * resourcePath(const APPSTATE *restrict state, const char *restrict 
 		return NULL;
 	}
 	size_t resdirLen = strlen(state->resdir), nameLen = strlen(name);
-	char *path = malloc(resdirLen + nameLen + 1);
+	char *path = SDL_malloc(resdirLen + nameLen + 1);
 	if (!path)
 	{
 		return NULL;
 	}
-	memcpy(path, state->resdir, resdirLen);
-	memcpy(&path[resdirLen], name, nameLen);
+	SDL_memcpy(path, state->resdir, resdirLen);
+	SDL_memcpy(&path[resdirLen], name, nameLen);
 	path[resdirLen + nameLen] = '\0';
 	return path;
 }
@@ -122,7 +120,7 @@ static FILE * fopenResource(const APPSTATE *restrict state, const char *restrict
 		return NULL;
 	}
 	FILE *f = fopen(path, mode);
-	free(path);
+	SDL_free(path);
 	return f;
 }
 
@@ -146,7 +144,7 @@ static void SetupWorld(APPSTATE *state)
 	readstr(filein, oneline);
 	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
 
-	state->sector1.triangle = malloc(sizeof(TRIANGLE) * numtriangles);
+	state->sector1.triangle = SDL_malloc(sizeof(TRIANGLE) * numtriangles);
 	state->sector1.numtriangles = numtriangles;
 	for (int loop = 0; loop < numtriangles; loop++)
 	{
@@ -259,7 +257,7 @@ static bool FlipSurface(SDL_Surface *surface)
 	const int pitch = surface->pitch;
 	const int numrows = surface->h;
 	unsigned char *pixels = (unsigned char *)surface->pixels;
-	unsigned char *tmprow = malloc(sizeof(unsigned char) * pitch);
+	unsigned char *tmprow = SDL_malloc(sizeof(unsigned char) * pitch);
 
 	unsigned char *row1 = pixels;
 	unsigned char *row2 = pixels + (numrows - 1) * pitch;
@@ -274,7 +272,7 @@ static bool FlipSurface(SDL_Surface *surface)
 		row2 -= pitch;
 	}
 
-	free(tmprow);
+	SDL_free(tmprow);
 	SDL_UnlockSurface(surface);
 	return true;
 }
@@ -454,7 +452,7 @@ static bool LoadTexture(APPSTATE *state)
 		return false;
 	}
 	SDL_Surface *TextureImage = SDL_LoadBMP(path);
-	free(path);
+	SDL_free(path);
 	if (!TextureImage || !FlipSurface(TextureImage))
 	{
 		SDL_DestroySurface(TextureImage);
@@ -1042,7 +1040,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 		return SDL_APP_FAILURE;
 	}
 
-	APPSTATE *state = *appstate = malloc(sizeof(APPSTATE));
+	APPSTATE *state = *appstate = SDL_malloc(sizeof(APPSTATE));
 	if (!state)
 	{
 		return SDL_APP_FAILURE;
@@ -1100,7 +1098,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 	if (appstate)
 	{
 		APPSTATE *state = (APPSTATE *)appstate;
-		free(state->sector1.triangle);
+		SDL_free(state->sector1.triangle);
 		if (state->dev)
 		{
 			SDL_ReleaseGPUBuffer(state->dev, state->worldmesh);
@@ -1114,7 +1112,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 			SDL_ReleaseGPUGraphicsPipeline(state->dev, state->pso);
 		}
 		KillGPUWindow(state);
-		free(state);
+		SDL_free(state);
 	}
 
 	SDL_Quit();
