@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION "3.15" FATAL_ERROR)
 project(Lesson10 LANGUAGES C)
 
 find_package(SDL3 REQUIRED CONFIG)
-find_package(OpenGL REQUIRED)
 
 set(SOURCES Lesson10.c)
 
@@ -14,8 +13,8 @@ set(DATA
 
 add_executable(Lesson10 WIN32 MACOSX_BUNDLE ${SOURCES} ${DATA})
 set_property(TARGET Lesson10 PROPERTY C_STANDARD 99)
-source_group("Data\\Random" FILES ${DATA})
-target_link_libraries(Lesson10 SDL3::SDL3 OpenGL::GL)
+source_group("Data" FILES ${DATA})
+target_link_libraries(Lesson10 SDL3::SDL3)
 target_compile_options(Lesson10 PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -pedantic>)
 target_compile_definitions(Lesson10 PRIVATE $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
 
