@@ -1,11 +1,5 @@
-#if D3D12
-# define REG(reg, space) register(reg, space)
-#else
-# define REG(reg, space) register(reg)
-#endif
-
-Texture2D<half4> Texture : REG(t0, space2);
-SamplerState Sampler : REG(s0, space2);
+Texture2D<half4> Texture : register(t0, space2);
+SamplerState Sampler : register(s0, space2);
 
 struct FragmentInput
 {

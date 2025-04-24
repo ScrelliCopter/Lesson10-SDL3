@@ -1,16 +1,10 @@
-#if D3D12
-# define REG(reg, space) register(reg, space)
-#else
-# define REG(reg, space) register(reg)
-#endif
-
 struct VertexInput
 {
 	float3 position : TEXCOORD0;
 	float2 texcoord : TEXCOORD1;
 };
 
-cbuffer VertexUniform : REG(b0, space1)
+cbuffer VertexUniform : register(b0, space1)
 {
 	float4x4 viewproj : packoffset(c0);
 };

@@ -60,9 +60,9 @@ def compile_dxbc_shaders(shaders: list[Direct3DShader]):
 	for shader in shaders:
 		cflags = []
 		if shader.type == "vertex":
-			cflags += ["/E", "VertexMain", "/T", "vs_5_0"]
+			cflags += ["/E", "VertexMain", "/T", "vs_5_1"]
 		elif shader.type == "pixel":
-			cflags += ["/E", "FragmentMain", "/T", "ps_5_0"]
+			cflags += ["/E", "FragmentMain", "/T", "ps_5_1"]
 
 		subprocess.run(["fxc", *cflags, "/Fo", f"{shader.output}.fxb", shader.source], check=True)
 
