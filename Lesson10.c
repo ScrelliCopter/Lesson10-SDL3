@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <float.h>
 #include <SDL3/SDL.h>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
@@ -369,7 +370,7 @@ static bool CreateDepthTexture(APPSTATE *state, unsigned width, unsigned height)
 	return true;
 }
 
-static SDL_GPUTexture * CreateTextureFromSurface(APPSTATE *state, const SDL_Surface *image)
+static SDL_GPUTexture * CreateTextureFromSurface(APPSTATE *state, const SDL_Surface *image, bool genmips)
 {
 	const int width = image->w, height = image->h, depth = 1;
 	const Uint32 datasize = 4 * width * height;
@@ -384,17 +385,28 @@ static SDL_GPUTexture * CreateTextureFromSurface(APPSTATE *state, const SDL_Surf
 		return NULL;
 	}
 
-	const SDL_GPUTextureCreateInfo info =
+	SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	int levels = 1;
+	if (genmips)
+	{
+		usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+		// Calculate the number of mipmap levels the texture should store
+		const int max = width > height ? width : height;
+		// AKA: for (int i = max; i > 1; ++levels, i /= 2);
+		// AKA: floor(log₂(max(𝑤,ℎ)) + 1
+		levels = SDL_MostSignificantBitIndex32(max) + 1;
+	}
+
+	SDL_GPUTexture *texture = SDL_CreateGPUTexture(state->dev, &(SDL_GPUTextureCreateInfo)
 	{
 		.type = SDL_GPU_TEXTURETYPE_2D,
 		.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-		.width = image->w,
-		.height = image->h,
+		.width = width,
+		.height = height,
 		.layer_count_or_depth = 1,
-		.num_levels = 1,
-		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-	};
-	SDL_GPUTexture *texture = SDL_CreateGPUTexture(state->dev, &info);
+		.num_levels = (Uint32)levels,
+		.usage = usage,
+	});
 
 	// Create and copy image data to a transfer buffer
 	SDL_GPUTransferBuffer *xferbuf = SDL_CreateGPUTransferBuffer(state->dev, &(SDL_GPUTransferBufferCreateInfo)
@@ -419,6 +431,12 @@ static SDL_GPUTexture * CreateTextureFromSurface(APPSTATE *state, const SDL_Surf
 	};
 	SDL_UploadToGPUTexture(pass, &source, &dest, false);
 	SDL_EndGPUCopyPass(pass);
+
+	if (genmips)
+	{
+		SDL_GenerateMipmapsForGPUTexture(cmdbuf, texture);
+	}
+
 	SDL_SubmitGPUCommandBuffer(cmdbuf);
 	SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
 	SDL_free(converted);
@@ -444,7 +462,7 @@ static bool LoadTexture(APPSTATE *state)
 	}
 
 	// Create texture
-	state->texture = CreateTextureFromSurface(state, TextureImage);
+	state->texture = CreateTextureFromSurface(state, TextureImage, true);
 	SDL_SetGPUTextureName(state->dev, state->texture, resname);
 
 	// Free temporary surface
@@ -462,18 +480,21 @@ static bool CreateGPUSamplers(APPSTATE *state)
 			.min_filter = SDL_GPU_FILTER_NEAREST,
 			.mag_filter = SDL_GPU_FILTER_NEAREST,
 			.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+			.max_lod = 0.f
 		},
 		[1] =  // Linear filtered
 		{
 			.min_filter = SDL_GPU_FILTER_LINEAR,
 			.mag_filter = SDL_GPU_FILTER_LINEAR,
 			.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+			.max_lod = 0.f
 		},
 		[2] =  // MipMapped
 		{
 			.min_filter = SDL_GPU_FILTER_LINEAR,
 			.mag_filter = SDL_GPU_FILTER_LINEAR,
 			.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+			.max_lod = FLT_MAX
 		}
 	};
 
@@ -787,14 +808,16 @@ static void DrawScene(APPSTATE *state)
 	// Draw world
 	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmdbuf, &colorinfo, 1, &depthinfo);
 	SDL_BindGPUGraphicsPipeline(pass, state->blend ? state->psoblend : state->pso);
-	SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
-			.texture = state->texture,
-			.sampler = state->samplers[state->filter]
-		}, 1);
+	SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding)
+	{
+		.texture = state->texture,
+		.sampler = state->samplers[state->filter]
+	}, 1);
 	Uint32 numvertices = 3u * state->sector1.numtriangles;
-	SDL_BindGPUVertexBuffers(pass, 0, &(SDL_GPUBufferBinding){
-			.buffer = state->worldmesh, .offset = 0
-		}, 1);
+	SDL_BindGPUVertexBuffers(pass, 0, &(SDL_GPUBufferBinding)
+	{
+		.buffer = state->worldmesh, .offset = 0
+	}, 1);
 	SDL_DrawGPUPrimitives(pass, numvertices, 1, 0, 0);
 
 	SDL_EndGPURenderPass(pass);
