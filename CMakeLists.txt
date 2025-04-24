@@ -31,6 +31,10 @@ target_link_libraries(Lesson10 SDL3::SDL3)
 target_compile_options(Lesson10 PRIVATE $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -pedantic>)
 target_compile_definitions(Lesson10 PRIVATE $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	target_link_libraries(Lesson10 m)
+endif()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	get_property(SDL3_IMPORTED_LOCATION TARGET SDL3::SDL3 PROPERTY IMPORTED_LOCATION)
 	if (SDL3_IMPORTED_LOCATION MATCHES "^/Library/Frameworks/")
