@@ -6,10 +6,12 @@ find_package(SDL3 REQUIRED CONFIG)
 set(SOURCES Lesson10.c)
 
 set(DATA
-	Data/Shader.vertex.metal
-	Data/Shader.fragment.metal
 	Data/Mud.bmp
 	Data/World.txt)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+	list(APPEND DATA Data/Shader.metallib)
+endif()
 
 add_executable(Lesson10 WIN32 MACOSX_BUNDLE ${SOURCES} ${DATA})
 set_property(TARGET Lesson10 PROPERTY C_STANDARD 99)

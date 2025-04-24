@@ -8,6 +8,7 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <float.h>
 #include <SDL3/SDL.h>
@@ -279,7 +280,7 @@ static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path, SDL_GPUShad
 	fread((void *)libdata, 1, libsize, filein);
 
 	// Create shader object
-	const SDL_GPUShaderCreateInfo desc =
+	SDL_GPUShader *shader = SDL_CreateGPUShader(state->dev, &(SDL_GPUShaderCreateInfo)
 	{
 		.num_samplers = isfragment ? 1 : 0,
 		.num_storage_textures = 0,
@@ -290,8 +291,7 @@ static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path, SDL_GPUShad
 		.code = libdata,
 		.code_size = (size_t)libsize,
 		.stage = isfragment ? SDL_GPU_SHADERSTAGE_FRAGMENT : SDL_GPU_SHADERSTAGE_VERTEX
-	};
-	SDL_GPUShader *shader = SDL_CreateGPUShader(state->dev, &desc);
+	});
 
 	SDL_free(libdata);
 	fclose(filein);
@@ -301,9 +301,29 @@ static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path, SDL_GPUShad
 static bool LoadShaders(APPSTATE *state, SDL_GPUShader **vertexshader, SDL_GPUShader **fragmentshader)
 {
 	SDL_GPUShader *vtxshader = NULL, *frgshader = NULL;
-	const SDL_GPUShaderFormat format = SDL_GPU_SHADERFORMAT_MSL;
-	vtxshader = LoadShader(state, "Data/shader.vertex.metal", format, false);
-	frgshader = LoadShader(state, "Data/shader.fragment.metal", format, true);
+
+	const SDL_GPUShaderFormat availableformats = SDL_GetGPUShaderFormats(state->dev);
+
+	if (availableformats & SDL_GPU_SHADERFORMAT_METALLIB)  // Apple Metal
+	{
+		vtxshader = LoadShader(state, "Data/Shader.metallib", SDL_GPU_SHADERFORMAT_METALLIB, false);
+		frgshader = LoadShader(state, "Data/Shader.metallib", SDL_GPU_SHADERFORMAT_METALLIB, true);
+	}
+	else if (availableformats & SDL_GPU_SHADERFORMAT_SPIRV)  // Vulkan, Direct3D 12 Shader Model 7.0
+	{
+		vtxshader = LoadShader(state, "Data/Shader.vertex.spv", SDL_GPU_SHADERFORMAT_SPIRV, false);
+		frgshader = LoadShader(state, "Data/Shader.fragment.spv", SDL_GPU_SHADERFORMAT_SPIRV, true);
+	}
+	else if (availableformats & SDL_GPU_SHADERFORMAT_DXIL)  // Direct3D 12 Shader Model 6.0
+	{
+		vtxshader = LoadShader(state, "Data/Shader.vertex.dxb", SDL_GPU_SHADERFORMAT_DXIL, false);
+		frgshader = LoadShader(state, "Data/Shader.fragment.dxb", SDL_GPU_SHADERFORMAT_DXIL, true);
+	}
+	else if (availableformats & SDL_GPU_SHADERFORMAT_DXBC)  // Direct3D 12 Shader Model 5.0
+	{
+		vtxshader = LoadShader(state, "Data/Shader.vertex.fxb", SDL_GPU_SHADERFORMAT_DXBC, false);
+		frgshader = LoadShader(state, "Data/Shader.fragment.fxb", SDL_GPU_SHADERFORMAT_DXBC, true);
+	}
 
 	if (!vtxshader || !frgshader)
 	{
