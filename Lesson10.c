@@ -163,46 +163,49 @@ static void SetupWorld(APPSTATE *state)
 	return;
 }
 
-static SDL_GPUBuffer * CreateStaticMesh(APPSTATE *state, const VERTEX *vertices, size_t numvertices)
+static bool CreateWorldMesh(APPSTATE *state)
 {
-	const Uint32 bufsize = sizeof(VERTEX) * (Uint32)numvertices;
+	const int numtriangles = state->sector1.numtriangles;
+	const size_t stride = sizeof(VERTEX) * 3;
+	const Uint32 bufsize = stride * (Uint32)numtriangles;
 
 	// Create vertex data buffer
-	const SDL_GPUBufferCreateInfo bufinfo =
+	SDL_GPUBuffer *buf = SDL_CreateGPUBuffer(state->dev, &(SDL_GPUBufferCreateInfo)
 	{
 		.usage = SDL_GPU_BUFFERUSAGE_INDEX,
 		.size = bufsize,
 		.props = 0
-	};
-	SDL_GPUBuffer *buf = SDL_CreateGPUBuffer(state->dev, &bufinfo);
+	});
 	if (!buf)
 	{
-		return NULL;
+		return false;
 	}
 
 	// Create transfer buffer
-	const SDL_GPUTransferBufferCreateInfo xferinfo =
+	SDL_GPUTransferBuffer *xferbuf = SDL_CreateGPUTransferBuffer(state->dev, &(SDL_GPUTransferBufferCreateInfo)
 	{
 		.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
 		.size = bufsize,
 		.props = 0
-	};
-	SDL_GPUTransferBuffer *xferbuf = SDL_CreateGPUTransferBuffer(state->dev, &xferinfo);
+	});
 	if (!xferbuf)
 	{
 		SDL_ReleaseGPUBuffer(state->dev, buf);
-		return NULL;
+		return false;
 	}
 
 	// Map transfer buffer and copy the vertex data
-	void *map = SDL_MapGPUTransferBuffer(state->dev, xferbuf, false);
+	Uint8 *map = SDL_MapGPUTransferBuffer(state->dev, xferbuf, false);
 	if (!map)
 	{
 		SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
 		SDL_ReleaseGPUBuffer(state->dev, buf);
-		return NULL;
+		return false;
 	}
-	SDL_memcpy(map, (const void *)vertices, (size_t)bufsize);
+	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
+	{
+		SDL_memcpy(&map[stride * loop_m], state->sector1.triangle[loop_m].vertex, stride);
+	}
 	SDL_UnmapGPUTransferBuffer(state->dev, xferbuf);
 
 	// Upload the vertex data into the GPU buffer
@@ -211,7 +214,7 @@ static SDL_GPUBuffer * CreateStaticMesh(APPSTATE *state, const VERTEX *vertices,
 	{
 		SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
 		SDL_ReleaseGPUBuffer(state->dev, buf);
-		return NULL;
+		return false;
 	}
 	SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(cmdbuf);
 	const SDL_GPUTransferBufferLocation source = { .transfer_buffer = xferbuf, .offset = 0 };
@@ -221,30 +224,8 @@ static SDL_GPUBuffer * CreateStaticMesh(APPSTATE *state, const VERTEX *vertices,
 	SDL_SubmitGPUCommandBuffer(cmdbuf);
 	SDL_ReleaseGPUTransferBuffer(state->dev, xferbuf);
 
-	return buf;
-}
-
-static bool CreateWorldMesh(APPSTATE *state)
-{
-	const int numtriangles = state->sector1.numtriangles;
-	const size_t numvertices = 3 * (size_t)numtriangles;
-
-	VERTEX *vertices = SDL_malloc(sizeof(VERTEX) * numvertices);
-	if (!vertices)
-	{
-		return false;
-	}
-
-	size_t index = 0;
-	for (int loop_m = 0; loop_m < numtriangles; loop_m++)
-	{
-		vertices[index++] = state->sector1.triangle[loop_m].vertex[0];
-		vertices[index++] = state->sector1.triangle[loop_m].vertex[1];
-		vertices[index++] = state->sector1.triangle[loop_m].vertex[2];
-	}
-	state->worldmesh = CreateStaticMesh(state, vertices, numvertices);
-	SDL_free(vertices);
-	return state->worldmesh != NULL;
+	state->worldmesh = buf;
+	return true;
 }
 
 static bool FlipSurface(SDL_Surface *surface)
