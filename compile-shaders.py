@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+from collections import namedtuple
 from pathlib import Path
 import subprocess
 import platform
 
 
-def compile_metal_shaders(sources: [str], library: str, cflags: [str]=None, sdk="macosx", debug: bool=False):
+def compile_metal_shaders(sources: list[str], library: str, cflags: list[str]=None, sdk="macosx", debug: bool=False):
 	if cflags is None:
 		cflags = []
 
@@ -38,6 +39,34 @@ def compile_metal_shaders(sources: [str], library: str, cflags: [str]=None, sdk=
 		Path(obj).unlink()
 
 
+Direct3DShader = namedtuple("Direct3DShader", ["source", "type", "output"])
+
+
+def compile_dxil_shaders(shaders: list[Direct3DShader], defines: list[str]=None):
+	if defines is None:
+		defines = []
+
+	cflags = [f"-D{d}" for d in defines]
+	for shader in shaders:
+		sflags = cflags.copy()
+		if shader.type == "vertex":
+			sflags += ["-E", "VertexMain", "-T", "vs_6_0"]
+		elif shader.type == "pixel":
+			sflags += ["-E", "FragmentMain", "-T", "ps_6_0"]
+		subprocess.run(["dxc", *sflags, "-Fo", f"{shader.output}.dxb", shader.source], check=True)
+
+
+def compile_dxbc_shaders(shaders: list[Direct3DShader]):
+	for shader in shaders:
+		cflags = []
+		if shader.type == "vertex":
+			cflags += ["/E", "VertexMain", "/T", "vs_5_0"]
+		elif shader.type == "pixel":
+			cflags += ["/E", "FragmentMain", "/T", "ps_5_0"]
+
+		subprocess.run(["fxc", *cflags, "/Fo", f"{shader.output}.fxb", shader.source], check=True)
+
+
 def compile_shaders():
 	system = platform.system()
 	if system == "Darwin":
@@ -51,6 +80,12 @@ def compile_shaders():
 				f"-std={compile_platform}-metal1.1",
 				f"-m{sdk_platform}-version-min={min_version}"],
 			sdk=sdk_platform)
+	if system == "Windows":
+		shaders = [
+			Direct3DShader(r"Shader.vertex.hlsl", "vertex", r"Data\Shader.vertex"),
+			Direct3DShader(r"Shader.fragment.hlsl", "pixel", r"Data\Shader.fragment")]
+		compile_dxil_shaders(shaders, defines=["D3D12"])
+		compile_dxbc_shaders(shaders)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,12 @@ set(DATA
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	list(APPEND DATA Data/Shader.metallib)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	list(APPEND
+		DATA Data/Shader.vertex.fxb
+		DATA Data/Shader.fragment.fxb
+		DATA Data/Shader.vertex.dxb
+		DATA Data/Shader.fragment.dxb)
 endif()
 
 add_executable(Lesson10 WIN32 MACOSX_BUNDLE ${SOURCES} ${DATA})
@@ -35,4 +41,8 @@ else()
 		add_custom_command(TARGET Lesson10 POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
 			$<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:Lesson10>)
 	endif()
+endif()
+
+if (CMAKE_GENERATOR MATCHES "Visual Studio")
+	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Lesson10)
 endif()

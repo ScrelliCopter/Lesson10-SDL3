@@ -319,7 +319,7 @@ static bool LoadShaders(APPSTATE *state, SDL_GPUShader **vertexshader, SDL_GPUSh
 		vtxshader = LoadShader(state, "Data/Shader.vertex.dxb", SDL_GPU_SHADERFORMAT_DXIL, false);
 		frgshader = LoadShader(state, "Data/Shader.fragment.dxb", SDL_GPU_SHADERFORMAT_DXIL, true);
 	}
-	else if (availableformats & SDL_GPU_SHADERFORMAT_DXBC)  // Direct3D 12 Shader Model 5.0
+	else if (availableformats & SDL_GPU_SHADERFORMAT_DXBC)  // Direct3D 11 Shader Model 5.0
 	{
 		vtxshader = LoadShader(state, "Data/Shader.vertex.fxb", SDL_GPU_SHADERFORMAT_DXBC, false);
 		frgshader = LoadShader(state, "Data/Shader.fragment.fxb", SDL_GPU_SHADERFORMAT_DXBC, true);
@@ -345,6 +345,13 @@ static bool CreateDepthTexture(APPSTATE *state, unsigned width, unsigned height)
 		state->depthtex = NULL;
 	}
 
+	SDL_PropertiesID texprops = SDL_CreateProperties();
+	if (texprops == 0)
+	{
+		return false;
+	}
+	SDL_SetFloatProperty(texprops, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_DEPTH_FLOAT, 1.f);  // Workaround for https://github.com/libsdl-org/SDL/issues/10758
+
 	SDL_GPUTexture *newtex = SDL_CreateGPUTexture(state->dev, &(SDL_GPUTextureCreateInfo)
 	{
 		.type = SDL_GPU_TEXTURETYPE_2D,
@@ -355,8 +362,9 @@ static bool CreateDepthTexture(APPSTATE *state, unsigned width, unsigned height)
 		.num_levels = 1,
 		.sample_count = SDL_GPU_SAMPLECOUNT_1,
 		.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-		.props = 0
+		.props = texprops
 	});
+	SDL_DestroyProperties(texprops);
 	if (!newtex)
 	{
 		return false;
@@ -879,7 +887,8 @@ static bool CreateGPUWindow(APPSTATE *state, char *title, int width, int height,
 		}
 	}
 
-	if (!(state->dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, true, NULL)))  // Create rendering device
+	const SDL_GPUShaderFormat supportedformats = SDL_GPU_SHADERFORMAT_METALLIB | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_DXBC;
+	if (!(state->dev = SDL_CreateGPUDevice(supportedformats, true, NULL)))  // Create rendering device
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GPU Rendering Context.", NULL);
 		return false;
