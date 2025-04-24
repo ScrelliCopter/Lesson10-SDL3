@@ -39,6 +39,14 @@ def compile_metal_shaders(sources: list[str], library: str, cflags: list[str]=No
 		Path(obj).unlink()
 
 
+SPIRVShader = namedtuple("SPIRVShader", ["source", "stage", "output"])
+
+
+def compile_spirv_shaders(shaders: list[SPIRVShader]):
+	for shader in shaders:
+		subprocess.run(["glslang", "-V", "-S", shader.stage, "-o", shader.output, shader.source], check=True)
+
+
 Direct3DShader = namedtuple("Direct3DShader", ["source", "type", "output"])
 
 
@@ -69,6 +77,9 @@ def compile_dxbc_shaders(shaders: list[Direct3DShader]):
 
 def compile_shaders():
 	system = platform.system()
+	compile_spirv_shaders([
+		SPIRVShader("Shader.vertex.glsl", "vert", "Data/Shader.vertex.spv"),
+		SPIRVShader("Shader.fragment.glsl", "frag", "Data/Shader.fragment.spv")])
 	if system == "Darwin":
 		compile_platform = "macos"
 		sdk_platform = "macosx"

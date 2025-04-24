@@ -11,12 +11,17 @@ set(DATA
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	list(APPEND DATA Data/Shader.metallib)
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	list(APPEND
-		DATA Data/Shader.vertex.fxb
-		DATA Data/Shader.fragment.fxb
-		DATA Data/Shader.vertex.dxb
-		DATA Data/Shader.fragment.dxb)
+else()
+	list(APPEND DATA
+		Data/Shader.vertex.spv
+		Data/Shader.fragment.spv)
+endif()
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	list(APPEND DATA
+		Data/Shader.vertex.fxb
+		Data/Shader.fragment.fxb
+		Data/Shader.vertex.dxb
+		Data/Shader.fragment.dxb)
 endif()
 
 add_executable(Lesson10 WIN32 MACOSX_BUNDLE ${SOURCES} ${DATA})
