@@ -259,7 +259,8 @@ static bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path, SDL_GPUShaderFormat format, const char *entrypoint, bool isfragment)
+static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path,
+	SDL_GPUShaderFormat format, const char *entrypoint, bool isfragment)
 {
 	FILE *filein = fopenResource(state, path, "rb");
 	if (!filein)
@@ -319,7 +320,7 @@ static bool LoadShaders(APPSTATE *state, SDL_GPUShader **vertexshader, SDL_GPUSh
 		vtxshader = LoadShader(state, "Data/Shader.vertex.dxb", SDL_GPU_SHADERFORMAT_DXIL, "VertexMain", false);
 		frgshader = LoadShader(state, "Data/Shader.fragment.dxb", SDL_GPU_SHADERFORMAT_DXIL, "FragmentMain", true);
 	}
-	else if (availableformats & SDL_GPU_SHADERFORMAT_DXBC)  // Direct3D 11 Shader Model 5.0
+	else if (availableformats & SDL_GPU_SHADERFORMAT_DXBC)  // Direct3D 12 Shader Model 5.1
 	{
 		vtxshader = LoadShader(state, "Data/Shader.vertex.fxb", SDL_GPU_SHADERFORMAT_DXBC, "VertexMain", false);
 		frgshader = LoadShader(state, "Data/Shader.fragment.fxb", SDL_GPU_SHADERFORMAT_DXBC, "FragmentMain", true);
@@ -350,7 +351,8 @@ static bool CreateDepthTexture(APPSTATE *state, unsigned width, unsigned height)
 	{
 		return false;
 	}
-	SDL_SetFloatProperty(texprops, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_DEPTH_FLOAT, 1.f);  // Workaround for https://github.com/libsdl-org/SDL/issues/10758
+	// Workaround for https://github.com/libsdl-org/SDL/issues/10758
+	SDL_SetFloatProperty(texprops, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_DEPTH_FLOAT, 1.f);
 
 	SDL_GPUTexture *newtex = SDL_CreateGPUTexture(state->dev, &(SDL_GPUTextureCreateInfo)
 	{
@@ -644,7 +646,8 @@ static void ReSizeScene(APPSTATE *state, int width, int height)
 	MakePerspective(state->projmtx, 45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
 }
 
-static SDL_GPUGraphicsPipeline *MakePipeline(APPSTATE *state, SDL_GPUShader *vtxshader, SDL_GPUShader *frgshader, bool blend)
+static SDL_GPUGraphicsPipeline *MakePipeline(APPSTATE *state,
+	SDL_GPUShader *vtxshader, SDL_GPUShader *frgshader, bool blend)
 {
 	const SDL_GPUColorTargetBlendState blendstate =
 	{
@@ -887,7 +890,9 @@ static bool CreateGPUWindow(APPSTATE *state, char *title, int width, int height,
 		}
 	}
 
-	const SDL_GPUShaderFormat supportedformats = SDL_GPU_SHADERFORMAT_METALLIB | SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_DXBC;
+	const SDL_GPUShaderFormat supportedformats =
+		SDL_GPU_SHADERFORMAT_METALLIB | SDL_GPU_SHADERFORMAT_SPIRV |
+		SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_DXBC;
 	if (!(state->dev = SDL_CreateGPUDevice(supportedformats, true, NULL)))  // Create rendering device
 	{
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ERROR", "Can't Create A GPU Rendering Context.", NULL);
