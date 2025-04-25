@@ -1,3 +1,12 @@
+## Loading And Moving Through A 3D World ##
+Port of the venerable
+[lesson 10](https://nehe.gamedev.net/tutorial/lessons_06__10/17010/)
+of the infamous [NeHe](https://nehe.gamedev.net/) OpenGL Tutorials to
+[SDL_GPU](https://wiki.libsdl.org/SDL3/CategoryGPU), using SDL3 in
+place of the original WinAPI calls.
+
+From the original `NeHe's Readme.txt`:
+```
 ==========================================================================
          OpenGL Lesson 10:  Loading And Moving Through A 3D World
 ==========================================================================
@@ -14,3 +23,4 @@
 ==========================================================================
                         NeHe Productions 1997-2004
 ==========================================================================
+```
