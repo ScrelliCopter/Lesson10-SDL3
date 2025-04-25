@@ -765,7 +765,7 @@ static bool InitGPU(APPSTATE *state)
 	return true;
 }
 
-static void DrawScene(APPSTATE *state)
+static bool DrawScene(APPSTATE *state)
 {
 	SDL_GPUCommandBuffer* cmdbuf = SDL_AcquireGPUCommandBuffer(state->dev);
 
@@ -776,7 +776,7 @@ static void DrawScene(APPSTATE *state)
 	if (!backbuftex)
 	{
 		SDL_CancelGPUCommandBuffer(cmdbuf);
-		return;
+		return false;
 	}
 
 	float xtrans = -state->camera.xpos;
@@ -832,6 +832,7 @@ static void DrawScene(APPSTATE *state)
 
 	SDL_EndGPURenderPass(pass);
 	SDL_SubmitGPUCommandBuffer(cmdbuf);
+	return true;
 }
 
 static void KillGPUWindow(APPSTATE *state)
@@ -976,7 +977,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	APPSTATE *state = (APPSTATE *)appstate;
-	DrawScene(state);             // Draw the scene
+	if (!DrawScene(state))             // Draw the scene
+	{
+		return SDL_APP_CONTINUE;
+	}
 
 	// Handle keyboard input
 	const bool *keys = SDL_GetKeyboardState(NULL);
