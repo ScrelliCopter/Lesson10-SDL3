@@ -771,9 +771,7 @@ static bool DrawScene(APPSTATE *state)
 
 	SDL_GPUTexture* backbuftex = NULL;
 	Uint32 backbufw, backbufh;
-	SDL_AcquireGPUSwapchainTexture(cmdbuf, state->win, &backbuftex, &backbufw, &backbufh);
-
-	if (!backbuftex)
+	if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, state->win, &backbuftex, &backbufw, &backbufh) || !backbuftex)
 	{
 		SDL_CancelGPUCommandBuffer(cmdbuf);
 		return false;
