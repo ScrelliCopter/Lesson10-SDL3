@@ -23,7 +23,7 @@ def compile_metal_shaders(sources: list[str], library: str, cflags: list[str]=No
 
 	# Compile each source to an AIR (Apple Intermediate Representation)
 	cflags.append("-frecord-sources")
-	air_objects = [f"{s.removesuffix(".metal")}.air" for s in sources]
+	air_objects = [f"{s.removesuffix('.metal')}.air" for s in sources]
 	for src, obj in zip(sources, air_objects):
 		subprocess.run([metal, *cflags, "-c", src, "-o", obj], check=True)
 
@@ -85,7 +85,7 @@ def compile_shaders():
 		sdk_platform = "macosx"
 		min_version = "10.11"
 		compile_metal_shaders(
-			sources=["Shader.vertex.metal", "Shader.fragment.metal"],
+			sources=["Shader.metal"],
 			library="Data/Shader.metallib",
 			cflags=["-Wall", "-O3",
 				f"-std={compile_platform}-metal1.1",

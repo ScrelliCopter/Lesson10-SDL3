@@ -259,26 +259,51 @@ static bool FlipSurface(SDL_Surface *surface)
 	return true;
 }
 
-static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path,
-	SDL_GPUShaderFormat format, const char *entrypoint, bool isfragment)
+typedef struct tagBLOB
+{
+	uint8_t *data;
+	size_t size;
+} BLOB;
+
+static BLOB ReadBlob(APPSTATE *state, const char *path)
 {
 	FILE *filein = fopenResource(state, path, "rb");
 	if (!filein)
 	{
-		return false;
+		return (BLOB){ NULL, 0U };
 	}
 
-	// Read shader code into a buffer
-	long libsize; Uint8 *libdata;
+	// Allocate a buffer of the size of the file
+	long size; Uint8 *data;
 	fseek(filein, 0, SEEK_END);
-	if ((libsize = ftell(filein)) <= 0 ||
-		!(libdata = SDL_malloc((size_t)libsize)))
+	if ((size = ftell(filein)) <= 0 ||
+		!(data = SDL_malloc((size_t)size)))
 	{
 		fclose(filein);
-		return NULL;
+		return (BLOB){ NULL, 0U };
 	}
 	fseek(filein, 0, SEEK_SET);
-	fread((void *)libdata, 1, libsize, filein);
+
+	// Read the file contents into the buffer
+	size_t read = fread((void *)data, 1, (size_t)size, filein);
+	fclose(filein);
+	if (read != (size_t)size)
+	{
+		SDL_free(data);
+		fclose(filein);
+		return (BLOB){ NULL, 0U };
+	}
+
+	return (BLOB){ data, read };
+}
+
+static SDL_GPUShader * LoadShaderBlob(APPSTATE *state, const BLOB lib,
+	SDL_GPUShaderFormat format, const char *entrypoint, bool isfragment)
+{
+	if (!lib.data)
+	{
+		return NULL;
+	}
 
 	// Create shader object
 	SDL_GPUShader *shader = SDL_CreateGPUShader(state->dev, &(SDL_GPUShaderCreateInfo)
@@ -289,13 +314,19 @@ static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path,
 		.num_uniform_buffers = isfragment ? 0 : 1,
 		.format = format,
 		.entrypoint = entrypoint,
-		.code = libdata,
-		.code_size = (size_t)libsize,
+		.code = lib.data,
+		.code_size = lib.size,
 		.stage = isfragment ? SDL_GPU_SHADERSTAGE_FRAGMENT : SDL_GPU_SHADERSTAGE_VERTEX
 	});
+	return shader;
+}
 
-	SDL_free(libdata);
-	fclose(filein);
+static SDL_GPUShader * LoadShader(APPSTATE *state, const char *path,
+	SDL_GPUShaderFormat format, const char *entrypoint, bool isfragment)
+{
+	BLOB lib = ReadBlob(state, path);
+	SDL_GPUShader *shader = LoadShaderBlob(state, lib, format, entrypoint, isfragment);
+	SDL_free(lib.data);
 	return shader;
 }
 
@@ -307,8 +338,10 @@ static bool LoadShaders(APPSTATE *state, SDL_GPUShader **vertexshader, SDL_GPUSh
 
 	if (availableformats & SDL_GPU_SHADERFORMAT_METALLIB)  // Apple Metal
 	{
-		vtxshader = LoadShader(state, "Data/Shader.metallib", SDL_GPU_SHADERFORMAT_METALLIB, "VertexMain", false);
-		frgshader = LoadShader(state, "Data/Shader.metallib", SDL_GPU_SHADERFORMAT_METALLIB, "FragmentMain", true);
+		BLOB mtllib = ReadBlob(state, "Data/Shader.metallib");
+		vtxshader = LoadShaderBlob(state, mtllib, SDL_GPU_SHADERFORMAT_METALLIB, "VertexMain", false);
+		frgshader = LoadShaderBlob(state, mtllib, SDL_GPU_SHADERFORMAT_METALLIB, "FragmentMain", true);
+		SDL_free(mtllib.data);
 	}
 	else if (availableformats & SDL_GPU_SHADERFORMAT_SPIRV)  // Vulkan
 	{
