@@ -338,25 +338,25 @@ static bool LoadShaders(APPSTATE *state, SDL_GPUShader **vertexshader, SDL_GPUSh
 
 	if (availableformats & SDL_GPU_SHADERFORMAT_METALLIB)  // Apple Metal
 	{
-		BLOB mtllib = ReadBlob(state, "Data/Shader.metallib");
+		BLOB mtllib = ReadBlob(state, "Data/Shaders/Shader.metallib");
 		vtxshader = LoadShaderBlob(state, mtllib, SDL_GPU_SHADERFORMAT_METALLIB, "VertexMain", false);
 		frgshader = LoadShaderBlob(state, mtllib, SDL_GPU_SHADERFORMAT_METALLIB, "FragmentMain", true);
 		SDL_free(mtllib.data);
 	}
 	else if (availableformats & SDL_GPU_SHADERFORMAT_SPIRV)  // Vulkan
 	{
-		vtxshader = LoadShader(state, "Data/Shader.vertex.spv", SDL_GPU_SHADERFORMAT_SPIRV, "main", false);
-		frgshader = LoadShader(state, "Data/Shader.fragment.spv", SDL_GPU_SHADERFORMAT_SPIRV, "main", true);
+		vtxshader = LoadShader(state, "Data/Shaders/Shader.vertex.spv", SDL_GPU_SHADERFORMAT_SPIRV, "main", false);
+		frgshader = LoadShader(state, "Data/Shaders/Shader.fragment.spv", SDL_GPU_SHADERFORMAT_SPIRV, "main", true);
 	}
 	else if (availableformats & SDL_GPU_SHADERFORMAT_DXIL)  // Direct3D 12 Shader Model 6.0
 	{
-		vtxshader = LoadShader(state, "Data/Shader.vertex.dxb", SDL_GPU_SHADERFORMAT_DXIL, "VertexMain", false);
-		frgshader = LoadShader(state, "Data/Shader.fragment.dxb", SDL_GPU_SHADERFORMAT_DXIL, "FragmentMain", true);
+		vtxshader = LoadShader(state, "Data/Shaders/Shader.vertex.dxb", SDL_GPU_SHADERFORMAT_DXIL, "VertexMain", false);
+		frgshader = LoadShader(state, "Data/Shaders/Shader.fragment.dxb", SDL_GPU_SHADERFORMAT_DXIL, "FragmentMain", true);
 	}
 	else if (availableformats & SDL_GPU_SHADERFORMAT_DXBC)  // Direct3D 12 Shader Model 5.1
 	{
-		vtxshader = LoadShader(state, "Data/Shader.vertex.fxb", SDL_GPU_SHADERFORMAT_DXBC, "VertexMain", false);
-		frgshader = LoadShader(state, "Data/Shader.fragment.fxb", SDL_GPU_SHADERFORMAT_DXBC, "FragmentMain", true);
+		vtxshader = LoadShader(state, "Data/Shaders/Shader.vertex.fxb", SDL_GPU_SHADERFORMAT_DXBC, "VertexMain", false);
+		frgshader = LoadShader(state, "Data/Shaders/Shader.fragment.fxb", SDL_GPU_SHADERFORMAT_DXBC, "FragmentMain", true);
 	}
 
 	if (!vtxshader || !frgshader)

@@ -122,9 +122,12 @@ def compile_dxbc_shaders(shaders: Iterable[Shader]) -> None:
 
 def compile_shaders() -> None:
 	system = platform.system()
+	dest_dir = Path("Data/Shaders")
 	shaders = [
-		Shader("Shader.vertex", "vert", "Data/Shader.vertex"),
-		Shader("Shader.fragment", "frag", "Data/Shader.fragment")]
+		Shader("Shader.vertex", "vert", dest_dir / "Shader.vertex"),
+		Shader("Shader.fragment", "frag", dest_dir / "Shader.fragment")]
+
+	dest_dir.mkdir(exist_ok=True)
 
 	# Try to find cross-platform shader compilers
 	glslang = shutil.which("glslang")

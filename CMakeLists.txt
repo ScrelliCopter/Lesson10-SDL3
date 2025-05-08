@@ -10,18 +10,18 @@ set(DATA
 	Data/World.txt)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-	list(APPEND DATA Data/Shader.metallib)
+	list(APPEND DATA Data/Shaders/Shader.metallib)
 else()
 	list(APPEND DATA
-		Data/Shader.vertex.spv
-		Data/Shader.fragment.spv)
+		Data/Shaders/Shader.vertex.spv
+		Data/Shaders/Shader.fragment.spv)
 endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 	list(APPEND DATA
-		Data/Shader.vertex.fxb
-		Data/Shader.fragment.fxb
-		Data/Shader.vertex.dxb
-		Data/Shader.fragment.dxb)
+		Data/Shaders/Shader.vertex.fxb
+		Data/Shaders/Shader.fragment.fxb
+		Data/Shaders/Shader.vertex.dxb
+		Data/Shaders/Shader.fragment.dxb)
 endif()
 
 add_executable(Lesson10 WIN32 MACOSX_BUNDLE ${SOURCES} ${DATA})
@@ -37,7 +37,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 		set_property(TARGET Lesson10 PROPERTY BUILD_RPATH "/Library/Frameworks")
 	endif()
 	foreach (RESOURCE IN LISTS DATA)
-		set_source_files_properties("${RESOURCE}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/Data")
+		get_filename_component(_DIRNAME "${RESOURCE}" DIRECTORY)
+		set_source_files_properties("${RESOURCE}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${_DIRNAME}")
+		unset(_DIRNAME)
 	endforeach()
 else()
 	add_custom_command(TARGET Lesson10 POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
