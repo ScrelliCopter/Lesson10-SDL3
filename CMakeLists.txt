@@ -3,7 +3,9 @@ project(Lesson10 LANGUAGES C)
 
 find_package(SDL3 REQUIRED CONFIG)
 
-set(SOURCES Sources/Lesson10.c)
+set(SOURCES
+	Sources/matrix.c Sources/matrix.h
+	Sources/Lesson10.c)
 
 set(DATA
 	Data/Mud.bmp
