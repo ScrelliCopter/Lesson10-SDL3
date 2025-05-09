@@ -1,6 +1,6 @@
 root = true
 
-[*.c]
+[*.{c,py}]
 charset = utf-8
 max_line_length = 120
 indent_style = tab
