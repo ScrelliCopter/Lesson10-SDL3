@@ -6,9 +6,7 @@
  *  Visit my site at https://nehe.gamedev.net
  */
 
-#include <math.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdbool.h>
 #include <float.h>
 #include <SDL3/SDL.h>
@@ -97,11 +95,8 @@ typedef struct tagAPPSTATE
 
 static char * resourcePath(const APPSTATE *restrict state, const char *restrict name)
 {
-	if (!state || !name)
-	{
-		return NULL;
-	}
-	size_t resdirLen = strlen(state->resdir), nameLen = strlen(name);
+	SDL_assert(state && state->resdir && name);
+	size_t resdirLen = SDL_strlen(state->resdir), nameLen = SDL_strlen(name);
 	char *path = SDL_malloc(resdirLen + nameLen + 1);
 	if (!path)
 	{
@@ -113,37 +108,51 @@ static char * resourcePath(const APPSTATE *restrict state, const char *restrict 
 	return path;
 }
 
-static FILE * fopenResource(const APPSTATE *restrict state, const char *restrict name, const char* restrict mode)
+static SDL_IOStream * fopenResource(const APPSTATE *restrict state, const char *restrict name, const char* restrict mode)
 {
-	char *path = NULL;
-	if (!mode || !(path = resourcePath(state, name)))
+	SDL_assert(state && name && mode);
+	char *path = resourcePath(state, name);
+	if (!path)
 	{
 		return NULL;
 	}
-	FILE *f = fopen(path, mode);
+	SDL_IOStream *f = SDL_IOFromFile(path, mode);
 	SDL_free(path);
 	return f;
 }
 
-static void readstr(FILE *f, char *string)
+static char * fgetsIO(char s[restrict], int n, SDL_IOStream *restrict f)
+{
+	char *p = s;
+	for (--n; n > 0; --n)
+	{
+		Sint8 c;
+		if (!SDL_ReadS8(f, &c))
+			break;
+		if (((*p++) = c) == '\n')
+			break;
+	}
+	(*p) = '\0';
+	return p != s ? s : NULL;
+}
+
+static void readstr(SDL_IOStream *restrict f, char *restrict string)
 {
 	do
 	{
-		fgets(string, 255, f);
-	} while ((string[0] == '/') || (string[0] == '\n'));
-	return;
+		fgetsIO(string, 255, f);
+	} while (string[0] == '/' || string[0] == '\n');
 }
 
 static void SetupWorld(APPSTATE *state)
 {
 	float x, y, z, u, v;
 	int numtriangles;
-	FILE *filein;
 	char oneline[255];
-	filein = fopenResource(state, "Data/World.txt", "r");  // File to load world data from
+	SDL_IOStream* filein = fopenResource(state, "Data/World.txt", "r");  // File to load world data from
 
 	readstr(filein, oneline);
-	sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
+	SDL_sscanf(oneline, "NUMPOLLIES %d\n", &numtriangles);
 
 	state->sector1.triangle = SDL_malloc(sizeof(TRIANGLE) * numtriangles);
 	state->sector1.numtriangles = numtriangles;
@@ -152,7 +161,7 @@ static void SetupWorld(APPSTATE *state)
 		for (int vert = 0; vert < 3; vert++)
 		{
 			readstr(filein, oneline);
-			sscanf(oneline, "%f %f %f %f %f", &x, &y, &z, &u, &v);
+			SDL_sscanf(oneline, "%f %f %f %f %f", &x, &y, &z, &u, &v);
 			state->sector1.triangle[loop].vertex[vert].x = x;
 			state->sector1.triangle[loop].vertex[vert].y = y;
 			state->sector1.triangle[loop].vertex[vert].z = z;
@@ -160,8 +169,7 @@ static void SetupWorld(APPSTATE *state)
 			state->sector1.triangle[loop].vertex[vert].v = v;
 		}
 	}
-	fclose(filein);
-	return;
+	SDL_CloseIO(filein);
 }
 
 static bool CreateWorldMesh(APPSTATE *state)
@@ -238,7 +246,7 @@ static bool FlipSurface(SDL_Surface *surface)
 
 	const int pitch = surface->pitch;
 	const int numrows = surface->h;
-	unsigned char *pixels = (unsigned char *)surface->pixels;
+	unsigned char *pixels = surface->pixels;
 	unsigned char *tmprow = SDL_malloc(sizeof(unsigned char) * pitch);
 
 	unsigned char *row1 = pixels;
@@ -246,9 +254,9 @@ static bool FlipSurface(SDL_Surface *surface)
 	for (int i = 0; i < numrows / 2; ++i)
 	{
 		// Swap rows
-		memcpy(tmprow, row1, pitch);
-		memcpy(row1, row2, pitch);
-		memcpy(row2, tmprow, pitch);
+		SDL_memcpy(tmprow, row1, pitch);
+		SDL_memcpy(row1, row2, pitch);
+		SDL_memcpy(row2, tmprow, pitch);
 
 		row1 += pitch;
 		row2 -= pitch;
@@ -267,30 +275,29 @@ typedef struct tagBLOB
 
 static BLOB ReadBlob(APPSTATE *state, const char *path)
 {
-	FILE *filein = fopenResource(state, path, "rb");
+	SDL_IOStream *filein = fopenResource(state, path, "rb");
 	if (!filein)
 	{
 		return (BLOB){ NULL, 0U };
 	}
 
 	// Allocate a buffer of the size of the file
-	long size; Uint8 *data;
-	fseek(filein, 0, SEEK_END);
-	if ((size = ftell(filein)) <= 0 ||
+	Sint64 size; Uint8 *data;
+	SDL_SeekIO(filein, 0, SDL_IO_SEEK_END);
+	if ((size = SDL_TellIO(filein)) <= 0 ||
 		!(data = SDL_malloc((size_t)size)))
 	{
-		fclose(filein);
+		SDL_CloseIO(filein);
 		return (BLOB){ NULL, 0U };
 	}
-	fseek(filein, 0, SEEK_SET);
+	SDL_SeekIO(filein, 0, SDL_IO_SEEK_SET);
 
 	// Read the file contents into the buffer
-	size_t read = fread((void *)data, 1, (size_t)size, filein);
-	fclose(filein);
+	const size_t read = SDL_ReadIO(filein, data, (size_t)size);
+	SDL_CloseIO(filein);
 	if (read != (size_t)size)
 	{
 		SDL_free(data);
-		fclose(filein);
 		return (BLOB){ NULL, 0U };
 	}
 
@@ -418,7 +425,7 @@ static SDL_GPUTexture * CreateTextureFromSurface(APPSTATE *state, const SDL_Surf
 	const Uint32 datasize = 4 * width * height;
 
 	// Convert the input surface into RGBA
-	void *converted = SDL_malloc((size_t)datasize);
+	void *converted = SDL_malloc(datasize);
 	if (!SDL_ConvertPixels(width, height,
 		image->format, image->pixels, image->pitch,
 		SDL_PIXELFORMAT_ABGR8888, converted, 4 * width))
@@ -543,12 +550,13 @@ static bool CreateGPUSamplers(APPSTATE *state)
 	for (unsigned i = 0; i < SDL_arraysize(state->samplers); ++i)
 	{
 		SDL_GPUSamplerCreateInfo info = params[i];
-		info.address_mode_u = info.address_mode_v = info.address_mode_w
-			= SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-		if (!(state->samplers[i] = SDL_CreateGPUSampler(state->dev, &info)))
+		info.address_mode_u = info.address_mode_v = info.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+		SDL_GPUSampler *sampler = SDL_CreateGPUSampler(state->dev, &info);
+		if (!sampler)
 		{
 			return false;
 		}
+		state->samplers[i] = sampler;
 	}
 
 	return true;
@@ -560,7 +568,7 @@ static bool CreateGPUSamplers(APPSTATE *state)
 	0, 0, 1, 0, \
 	0, 0, 0, 1 }
 
-static void MulMatrices(mat4f mtx, mat4f lhs, mat4f rhs)
+static void MulMatrices(mat4f mtx, const mat4f lhs, const mat4f rhs)
 {
 	int i = 0;
 	for (int col = 0; col < 4; ++col)
@@ -675,7 +683,7 @@ static void ReSizeScene(APPSTATE *state, int width, int height)
 		height = 1;
 	}
 
-	float aspect = (float)width / (float)height;        // Calculate aspect ratio
+	const float aspect = (float)width / (float)height;        // Calculate aspect ratio
 	MakePerspective(state->projmtx, 45.0f, aspect, 0.1f, 100.0f);  // Setup perspective matrix
 }
 
@@ -810,10 +818,10 @@ static bool DrawScene(APPSTATE *state)
 		return false;
 	}
 
-	float xtrans = -state->camera.xpos;
-	float ztrans = -state->camera.zpos;
-	float ytrans = -state->camera.walkbias - 0.25f;
-	float sceneroty = 360.0f - state->camera.yrot;
+	const float xtrans = -state->camera.xpos;
+	const float ztrans = -state->camera.zpos;
+	const float ytrans = -state->camera.walkbias - 0.25f;
+	const float sceneroty = 360.0f - state->camera.yrot;
 
 	mat4f modelview = M4_IDENTITY;
 	Rotate(modelview, state->camera.lookupdown, 1.0f, 0.0f, 0.0f);
@@ -854,7 +862,7 @@ static bool DrawScene(APPSTATE *state)
 		.texture = state->texture,
 		.sampler = state->samplers[state->filter]
 	}, 1);
-	Uint32 numvertices = 3u * state->sector1.numtriangles;
+	const Uint32 numvertices = 3u * state->sector1.numtriangles;
 	SDL_BindGPUVertexBuffers(pass, 0, &(SDL_GPUBufferBinding)
 	{
 		.buffer = state->worldmesh, .offset = 0
@@ -910,7 +918,7 @@ static bool CreateGPUWindow(APPSTATE *state, char *title, int width, int height,
 		if (!SDL_SetWindowFullscreen(state->win, true))
 		{
 			// If mode switching fails, ask the user to quit or use to windowed mode
-			int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe SDL_GPU",
+			const int bttnid = ShowYesNoMessageBox(state->win, BTTN_YES, "NeHe SDL_GPU",
 				"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?");
 			if (bttnid == BTTN_NO)
 			{
@@ -952,7 +960,7 @@ static bool CreateGPUWindow(APPSTATE *state, char *title, int width, int height,
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-	APPSTATE *state = (APPSTATE *)appstate;
+	APPSTATE *state = appstate;
 	switch (event->type)
 	{
 	case SDL_EVENT_QUIT:                                          // Have we received a quit event?
@@ -1007,7 +1015,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-	APPSTATE *state = (APPSTATE *)appstate;
+	APPSTATE *state = appstate;
 	if (!DrawScene(state))             // Draw the scene
 	{
 		return SDL_APP_CONTINUE;
@@ -1030,8 +1038,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 	if (keys[SDL_SCANCODE_UP])
 	{
-		state->camera.xpos -= sinf(state->camera.heading * piover180) * 0.05f;
-		state->camera.zpos -= cosf(state->camera.heading * piover180) * 0.05f;
+		state->camera.xpos -= SDL_sinf(state->camera.heading * piover180) * 0.05f;
+		state->camera.zpos -= SDL_cosf(state->camera.heading * piover180) * 0.05f;
 		if (state->camera.walkbiasangle >= 359.0f)
 		{
 			state->camera.walkbiasangle = 0.0f;
@@ -1040,13 +1048,13 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 		{
 			state->camera.walkbiasangle += 10;
 		}
-		state->camera.walkbias = sinf(state->camera.walkbiasangle * piover180) / 20.0f;
+		state->camera.walkbias = SDL_sinf(state->camera.walkbiasangle * piover180) / 20.0f;
 	}
 
 	if (keys[SDL_SCANCODE_DOWN])
 	{
-		state->camera.xpos += sinf(state->camera.heading * piover180) * 0.05f;
-		state->camera.zpos += cosf(state->camera.heading * piover180) * 0.05f;
+		state->camera.xpos += SDL_sinf(state->camera.heading * piover180) * 0.05f;
+		state->camera.zpos += SDL_cosf(state->camera.heading * piover180) * 0.05f;
 		if (state->camera.walkbiasangle <= 1.0f)
 		{
 			state->camera.walkbiasangle = 359.0f;
@@ -1055,7 +1063,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 		{
 			state->camera.walkbiasangle -= 10;
 		}
-		state->camera.walkbias = sinf(state->camera.walkbiasangle * piover180) / 20.0f;
+		state->camera.walkbias = SDL_sinf(state->camera.walkbiasangle * piover180) / 20.0f;
 	}
 
 	if (keys[SDL_SCANCODE_RIGHT])
@@ -1085,6 +1093,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
+	(void)argc; (void)argv;  // Unused parameters
+
 	if (!SDL_Init(SDL_INIT_VIDEO))
 	{
 		return SDL_APP_FAILURE;
@@ -1130,7 +1140,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	};
 
 	// Ask the user if they would like to start in fullscreen or windowed mode
-	int bttnid = ShowYesNoMessageBox(state->win, BTTN_NO, "Start FullScreen?",
+	const int bttnid = ShowYesNoMessageBox(state->win, BTTN_NO, "Start FullScreen?",
 		"Would You Like To Run In Fullscreen Mode?");
 
 	// Create our SDL window
@@ -1145,9 +1155,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+	(void)result;  // Unused parameters
+
 	if (appstate)
 	{
-		APPSTATE *state = (APPSTATE *)appstate;
+		APPSTATE *state = appstate;
 		SDL_free(state->sector1.triangle);
 		if (state->dev)
 		{
