@@ -106,7 +106,7 @@ static char * resourcePath(const APPSTATE *restrict state, const char *restrict 
 	return path;
 }
 
-static SDL_IOStream * fopenResource(const APPSTATE *restrict state, const char *restrict name, const char* restrict mode)
+static SDL_IOStream * fopenResource(const APPSTATE *restrict state, const char *restrict name, const char *restrict mode)
 {
 	SDL_assert(state && name && mode);
 	char *path = resourcePath(state, name);
@@ -119,7 +119,7 @@ static SDL_IOStream * fopenResource(const APPSTATE *restrict state, const char *
 	return f;
 }
 
-static char * fgetsIO(char s[restrict], int n, SDL_IOStream *restrict f)
+static char * fgetsIO(char *restrict s, int n, SDL_IOStream *restrict f)
 {
 	char *p = s;
 	for (--n; n > 0; --n)
