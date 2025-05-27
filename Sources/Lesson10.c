@@ -235,36 +235,6 @@ static bool CreateWorldMesh(APPSTATE *state)
 	return true;
 }
 
-static bool FlipSurface(SDL_Surface *surface)
-{
-	if (!surface || !SDL_LockSurface(surface))
-	{
-		return false;
-	}
-
-	const int pitch = surface->pitch;
-	const int numrows = surface->h;
-	unsigned char *pixels = surface->pixels;
-	unsigned char *tmprow = SDL_malloc(sizeof(unsigned char) * pitch);
-
-	unsigned char *row1 = pixels;
-	unsigned char *row2 = pixels + (numrows - 1) * pitch;
-	for (int i = 0; i < numrows / 2; ++i)
-	{
-		// Swap rows
-		SDL_memcpy(tmprow, row1, pitch);
-		SDL_memcpy(row1, row2, pitch);
-		SDL_memcpy(row2, tmprow, pitch);
-
-		row1 += pitch;
-		row2 -= pitch;
-	}
-
-	SDL_free(tmprow);
-	SDL_UnlockSurface(surface);
-	return true;
-}
-
 typedef struct tagBLOB
 {
 	uint8_t *data;
@@ -502,7 +472,7 @@ static bool LoadTexture(APPSTATE *state)
 	}
 	SDL_Surface *TextureImage = SDL_LoadBMP(path);
 	SDL_free(path);
-	if (!TextureImage || !FlipSurface(TextureImage))
+	if (!TextureImage || !SDL_FlipSurface(TextureImage, SDL_FLIP_VERTICAL))
 	{
 		SDL_DestroySurface(TextureImage);
 		return false;
