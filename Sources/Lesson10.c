@@ -179,7 +179,7 @@ static bool CreateWorldMesh(APPSTATE *state)
 	// Create vertex data buffer
 	SDL_GPUBuffer *buf = SDL_CreateGPUBuffer(state->dev, &(SDL_GPUBufferCreateInfo)
 	{
-		.usage = SDL_GPU_BUFFERUSAGE_INDEX,
+		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
 		.size = bufsize,
 		.props = 0
 	});
